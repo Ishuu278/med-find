@@ -8,7 +8,7 @@ import json
 import sqlite3
 import math
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 DB_PATH = "medfind.db"
 WEIGHTS_PATH = "model_weights.json"
@@ -59,7 +59,7 @@ def train():
     weights = dict(DEFAULT_WEIGHTS)
 
     with open(WEIGHTS_PATH, "w") as f:
-        json.dump({"weights": weights, "trained_at": datetime.utcnow().isoformat()}, f, indent=2)
+        json.dump({"weights": weights, "trained_at": datetime.now(timezone.utc).isoformat()}, f, indent=2)
 
     print(f"Model weights saved to {WEIGHTS_PATH}")
     print(f"Weights: {weights}")

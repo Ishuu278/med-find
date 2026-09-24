@@ -91,7 +91,7 @@ def haversine(lat1, lon1, lat2, lon2) -> float:
 def minutes_since(dt_str: str) -> int:
     try:
         dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-        delta = datetime.utcnow() - dt
+        delta = datetime.now(timezone.utc).replace(tzinfo=None) - dt
         return max(0, int(delta.total_seconds() / 60))
     except Exception:
         return 9999
@@ -313,7 +313,7 @@ def api_inventory_update(pharmacy_id):
         return jsonify({"error": "quantity must be a non-negative integer"}), 400
 
     db = get_db()
-    now = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     db.execute(
         "UPDATE inventory SET quantity = ?, last_updated = ? WHERE pharmacy_id = ? AND medicine_id = ?",
         (quantity, now, pharmacy_id, medicine_id),
@@ -341,12 +341,9 @@ def api_reserve():
         return jsonify({"error": "quantity must be a positive integer"}), 400
 
     db = get_db()
-    # Use first word of medicine name (as per backend contract)
-    medicine_key = medicine.split()[0]
-
     cur = db.execute(
         "INSERT INTO reservations (pharmacy_id, medicine_name, quantity, status) VALUES (?, ?, ?, 'pending')",
-        (pharmacy_id, medicine_key, quantity),
+        (pharmacy_id, medicine, quantity),
     )
     db.commit()
     request_id = f"RES-{cur.lastrowid:06d}"

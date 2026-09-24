@@ -6,7 +6,7 @@ Run once: python seed.py
 import sqlite3
 import hashlib
 import os
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import random
 
 DB_PATH = "medfind.db"
@@ -72,15 +72,12 @@ def random_last_updated():
     """Return a datetime weighted towards recent, but some stale."""
     choice = random.random()
     if choice < 0.4:
-        # fresh: within 30 min
         delta = timedelta(minutes=random.randint(1, 29))
     elif choice < 0.7:
-        # aging: 30 min to 12 h
         delta = timedelta(minutes=random.randint(30, 719))
     else:
-        # stale: 12 h+
         delta = timedelta(hours=random.randint(12, 72))
-    return datetime.utcnow() - delta
+    return datetime.now(timezone.utc).replace(tzinfo=None) - delta
 
 
 def seed():
@@ -114,11 +111,10 @@ def seed():
     conn.commit()
     print(f"Inserted {len(MEDICINES)} medicines.")
 
-    # Seed inventory — each pharmacy gets a random subset
+    # Seed inventory — each pharmacy gets a broad sample of medicines
     inventory_rows = 0
     for p_name, p_id in pharmacy_ids.items():
-        # Each pharmacy stocks 8-13 medicines
-        selected = random.sample(medicine_ids, k=random.randint(8, 13))
+        selected = random.sample(medicine_ids, k=random.randint(18, min(25, len(medicine_ids))))
         for m_id in selected:
             qty = random.choice(
                 [0, 0, 5, 8, 10, 15, 20, 30, 50, 75, 100, 150, 200]

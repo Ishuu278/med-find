@@ -1,0 +1,9 @@
+{
+  "weights": {
+    "availability": 0.4,
+    "freshness": 0.25,
+    "distance": 0.25,
+    "is_open": 0.1
+  },
+  "trained_at": "2026-09-24T20:16:41.990045+00:00"
+}
