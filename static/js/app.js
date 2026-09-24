@@ -121,6 +121,9 @@ const api = (() => {
   const MOCK_MEDICINES = [
     { name: "Paracetamol", strength: "650mg", form: "Tablet" },
     { name: "Paracetamol", strength: "500mg", form: "Tablet" },
+    { name: "Dolo 650", strength: "650mg", form: "Tablet" },
+    { name: "Crocin", strength: "500mg", form: "Tablet" },
+    { name: "Combiflam", strength: "400mg", form: "Tablet" },
     { name: "Amoxicillin", strength: "500mg", form: "Capsule" },
     { name: "Amoxicillin", strength: "250mg", form: "Syrup" },
     { name: "Metformin", strength: "500mg", form: "Tablet" },
@@ -129,7 +132,18 @@ const api = (() => {
     { name: "Omeprazole", strength: "20mg", form: "Capsule" },
     { name: "Azithromycin", strength: "500mg", form: "Tablet" },
     { name: "Pantoprazole", strength: "40mg", form: "Tablet" },
+    { name: "Atorvastatin", strength: "10mg", form: "Tablet" },
+    { name: "Aspirin", strength: "75mg", form: "Tablet" },
+    { name: "Vitamin C", strength: "500mg", form: "Chewable Tablet" },
+    { name: "Montelukast", strength: "10mg", form: "Tablet" },
+    { name: "Amlodipine", strength: "5mg", form: "Tablet" },
+    { name: "Telmisartan", strength: "40mg", form: "Tablet" },
+    { name: "Levothyroxine", strength: "50mcg", form: "Tablet" },
+    { name: "Ciprofloxacin", strength: "500mg", form: "Tablet" },
     { name: "Doxycycline", strength: "100mg", form: "Capsule" },
+    { name: "Salbutamol", strength: "100mcg", form: "Inhaler" },
+    { name: "Clopidogrel", strength: "75mg", form: "Tablet" },
+    { name: "Diclofenac", strength: "50mg", form: "Tablet" },
   ];
 
   function calcHaversine(lat1, lon1, lat2, lon2) {
