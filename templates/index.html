@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="MedFind — Search nearby pharmacies for medicine availability in real time. Find medicine in minutes, not hours." />
+  <title>MedFind — Smart Medicine Availability</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="/static/css/style.css" />
+
+  <!-- Inline favicon (pill SVG) -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='10' width='28' height='12' rx='6' fill='%230F9D8A'/><line x1='16' y1='10' x2='16' y2='22' stroke='white' stroke-width='2'/></svg>" />
+</head>
+<body>
+
+<!-- =====================================================================
+     TOP NAVIGATION
+===================================================================== -->
+<header class="navbar" role="banner">
+  <div class="navbar__inner">
+    <!-- Logo -->
+    <a href="#/" class="navbar__brand" aria-label="MedFind home">
+      <span class="navbar__logo-icon" aria-hidden="true">
+        <!-- Pill SVG -->
+        <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="10" width="28" height="12" rx="6" fill="currentColor"/>
+          <line x1="16" y1="10" x2="16" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <span class="navbar__wordmark">MedFind</span>
+    </a>
+
+    <!-- Tagline (hidden on mobile) -->
+    <span class="navbar__tagline" aria-hidden="true">Find medicine near you, faster.</span>
+
+    <!-- Desktop nav links -->
+    <nav class="navbar__links" role="navigation" aria-label="Main navigation">
+      <a href="#/" class="nav-link" data-route="home" id="nav-home">Find Medicine</a>
+      <a href="#/login" class="nav-link" data-route="login" id="nav-login">Pharmacy Login</a>
+      <!-- Shown when logged in -->
+      <a href="#/dashboard" class="nav-link" data-route="dashboard" id="nav-dashboard" hidden>Dashboard</a>
+      <span class="navbar__pharmacy-name" id="nav-pharmacy-name" hidden></span>
+      <button class="btn btn--ghost btn--sm" id="nav-logout-btn" hidden>Logout</button>
+    </nav>
+
+    <!-- Controls: dark mode + hamburger -->
+    <div class="navbar__controls">
+      <button class="icon-btn" id="theme-toggle" aria-label="Toggle dark mode" title="Toggle dark mode">
+        <!-- Sun icon -->
+        <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <!-- Moon icon -->
+        <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </button>
+      <button class="icon-btn hamburger" id="hamburger-btn" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-menu">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile menu -->
+  <div class="mobile-menu" id="mobile-menu" role="dialog" aria-label="Mobile navigation" hidden>
+    <nav class="mobile-menu__links">
+      <a href="#/" class="mobile-nav-link" data-route="home">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        Find Medicine
+      </a>
+      <a href="#/login" class="mobile-nav-link" data-route="login" id="mob-nav-login">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        Pharmacy Login
+      </a>
+      <a href="#/dashboard" class="mobile-nav-link" data-route="dashboard" id="mob-nav-dashboard" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <button class="mobile-nav-link mobile-nav-link--logout" id="mob-logout-btn" hidden>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Logout
+      </button>
+    </nav>
+  </div>
+</header>
+
+<!-- =====================================================================
+     MAIN CONTENT — views injected here by router
+===================================================================== -->
+<main id="app-root" role="main" tabindex="-1"></main>
+
+<!-- =====================================================================
+     ARIA LIVE REGION for screen reader announcements
+===================================================================== -->
+<div aria-live="polite" aria-atomic="true" id="aria-announcer" class="sr-only"></div>
+
+<!-- =====================================================================
+     TOAST CONTAINER
+===================================================================== -->
+<div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
+
+<!-- =====================================================================
+     RESERVE MODAL
+===================================================================== -->
+<div class="modal-backdrop" id="reserve-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="reserve-modal-title">
+  <div class="modal" id="reserve-modal">
+    <button class="modal__close" id="reserve-modal-close" aria-label="Close reserve modal">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button>
+    <div id="reserve-modal-content"></div>
+  </div>
+</div>
+
+<!-- =====================================================================
+     FOOTER
+===================================================================== -->
+<footer class="footer" role="contentinfo">
+  <div class="footer__inner">
+    <div class="footer__brand">
+      <span class="footer__logo">
+        <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+          <rect x="2" y="10" width="28" height="12" rx="6" fill="currentColor"/>
+          <line x1="16" y1="10" x2="16" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+      </span>
+      <div>
+        <p class="footer__name">MedFind</p>
+        <p class="footer__subtitle">Smart Medicine Availability System</p>
+      </div>
+    </div>
+
+    <div class="footer__coming-soon">
+      <p class="footer__coming-label">Coming Soon</p>
+      <ul class="footer__features">
+        <li>📷 Prescription OCR</li>
+        <li>📈 Availability Prediction</li>
+        <li>⏱️ Time-limited Reservations</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footer__disclaimer">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+    MedFind shows pharmacy-reported availability, which may not be current. Always confirm with the pharmacy before visiting. This is not medical advice.
+  </div>
+</footer>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
