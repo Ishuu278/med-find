@@ -605,48 +605,50 @@ const views = (() => {
     hero.className = 'hero';
     hero.setAttribute('aria-label', 'Search for medicine');
     hero.innerHTML = `
-      <div class="hero__inner">
-        <div class="hero__eyebrow" aria-hidden="true">
-          <svg width="14" height="14" viewBox="0 0 32 32" fill="none"><rect x="2" y="10" width="28" height="12" rx="6" fill="currentColor"/><line x1="16" y1="10" x2="16" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>
-          Real-time medicine availability
-        </div>
-        <h1 class="hero__title">Find your medicine<br/><span>in minutes, not hours</span></h1>
-        <p class="hero__subtitle">Search 6 pharmacies near Bhubaneswar — see live stock, freshness, and distance.</p>
-
-        <form class="search-bar" id="search-form" role="search" aria-label="Search medicines">
-          <div class="search-bar__icon" aria-hidden="true">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
+      <div class="hero__layout">
+        <div class="hero__inner">
+          <div class="hero__eyebrow" aria-hidden="true">
+            <svg width="14" height="14" viewBox="0 0 32 32" fill="none"><rect x="2" y="10" width="28" height="12" rx="6" fill="currentColor"/><line x1="16" y1="10" x2="16" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/></svg>
+            Real-time medicine availability
           </div>
-          <input type="search" id="search-input" class="search-bar__input"
-            placeholder="e.g. Paracetamol, Amoxicillin…" autocomplete="off"
-            aria-label="Search medicine name" aria-autocomplete="list"
-            value="${utils.escape(s.search.query)}" />
-          <button type="submit" class="search-bar__btn" id="search-submit-btn" aria-label="Search">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-            </svg>
-            <span class="btn-label">Search</span>
-          </button>
-        </form>
+          <h1 class="hero__title">Find your medicine<br/><span>in minutes, not hours</span></h1>
+          <p class="hero__subtitle">Search 6 pharmacies near Bhubaneswar — see live stock, freshness, and distance.</p>
 
-        <div class="location-row">
-          <button class="use-location-btn" id="use-location-btn" type="button" aria-label="Use my current location">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
-            </svg>
-            Use my location
-          </button>
-          <span class="location-note" id="location-note" aria-live="polite">
-            ${s.location.isDefault ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Using default location: Bhubaneswar' : ''}
-          </span>
-        </div>
+          <form class="search-bar" id="search-form" role="search" aria-label="Search medicines">
+            <div class="search-bar__icon" aria-hidden="true">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+            </div>
+            <input type="search" id="search-input" class="search-bar__input"
+              placeholder="e.g. Paracetamol, Amoxicillin…" autocomplete="off"
+              aria-label="Search medicine name" aria-autocomplete="list"
+              value="${utils.escape(s.search.query)}" />
+            <button type="submit" class="search-bar__btn" id="search-submit-btn" aria-label="Search">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+              </svg>
+              <span class="btn-label">Search</span>
+            </button>
+          </form>
 
-        <div class="suggestion-chips" role="list" aria-label="Quick medicine suggestions">
-          ${['Paracetamol', 'Amoxicillin', 'Metformin', 'Cetirizine', 'Ibuprofen', 'Omeprazole']
-            .map(n => `<button class="chip" role="listitem" type="button" data-chip="${utils.escape(n)}" aria-label="Search for ${utils.escape(n)}">${utils.escape(n)}</button>`)
-            .join('')}
+          <div class="location-row">
+            <button class="use-location-btn" id="use-location-btn" type="button" aria-label="Use my current location">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+              </svg>
+              Use my location
+            </button>
+            <span class="location-note" id="location-note" aria-live="polite">
+              ${s.location.isDefault ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Using default location: Bhubaneswar' : ''}
+            </span>
+          </div>
+
+          <div class="suggestion-chips" role="list" aria-label="Quick medicine suggestions">
+            ${['Paracetamol', 'Amoxicillin', 'Metformin', 'Cetirizine', 'Ibuprofen', 'Omeprazole']
+              .map(n => `<button class="chip" role="listitem" type="button" data-chip="${utils.escape(n)}" aria-label="Search for ${utils.escape(n)}">${utils.escape(n)}</button>`)
+              .join('')}
+          </div>
         </div>
       </div>
     `;
@@ -864,10 +866,9 @@ const views = (() => {
     const div = document.createElement('div');
     div.className = 'initial-state';
     div.innerHTML = `
-      <div class="initial-state__graphic" aria-hidden="true">
-        <svg width="52" height="52" viewBox="0 0 32 32" fill="none">
-          <rect x="2" y="10" width="28" height="12" rx="6" fill="currentColor" opacity=".85"/>
-          <line x1="16" y1="10" x2="16" y2="22" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      <div class="empty-state__icon" aria-hidden="true" style="background:var(--clr-accent-light);color:var(--clr-accent-dark);margin:0 auto 20px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
         </svg>
       </div>
       <h2 class="initial-state__title">Search for any medicine</h2>
@@ -880,10 +881,9 @@ const views = (() => {
     div.className = 'empty-state';
     div.setAttribute('role', 'status');
     div.innerHTML = `
-      <div class="empty-state__icon" aria-hidden="true">
+      <div class="empty-state__icon" aria-hidden="true" style="background:var(--clr-yellow-bg);color:var(--clr-yellow-text);margin:0 auto 20px;">
         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-          <line x1="8" y1="11" x2="14" y2="11"/>
         </svg>
       </div>
       <h2 class="empty-state__title">No results found</h2>

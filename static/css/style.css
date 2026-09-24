@@ -535,20 +535,31 @@ ul, ol { list-style: none; }
 
 /* Hero */
 .hero {
-  background: linear-gradient(135deg, var(--clr-primary) 0%, var(--clr-primary-dark) 60%, #0a6b5e 100%);
+  background:
+    linear-gradient(135deg,
+      rgba(15, 157, 138, 0.93) 0%,
+      rgba(12, 125, 110, 0.88) 45%,
+      rgba(10, 107, 94, 0.82) 100%),
+    url('/static/images/hero_bg.jpg') center center / cover no-repeat;
   padding: 36px 16px 60px;
   position: relative;
   overflow: hidden;
 }
 @media (min-width: 480px) { .hero { padding: 48px 20px 68px; } }
-@media (min-width: 768px) { .hero { padding: 60px 24px 80px; } }
+@media (min-width: 768px) { .hero { padding: 56px 24px 80px; } }
+@media (min-width: 1024px) { .hero { padding: 64px 24px 96px; } }
+
+/* Subtle dot grid overlay */
 .hero::before {
   content: '';
   position: absolute;
   inset: 0;
-  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='60' height='60' viewBox='0 0 60 60'%3E%3Ccircle cx='30' cy='30' r='1.5' fill='rgba(255,255,255,0.06)'/%3E%3C/svg%3E") repeat;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Ccircle cx='20' cy='20' r='1' fill='rgba(255,255,255,0.08)'/%3E%3C/svg%3E") repeat;
   pointer-events: none;
+  z-index: 0;
 }
+
+/* Curved bottom edge */
 .hero::after {
   content: '';
   position: absolute;
@@ -557,15 +568,27 @@ ul, ol { list-style: none; }
   height: 60px;
   background: var(--clr-bg);
   clip-path: ellipse(55% 100% at 50% 100%);
+  z-index: 2;
+}
+
+/* Hero layout — centered search hero */
+.hero__layout {
+  max-width: 800px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 1;
 }
 
 .hero__inner {
-  max-width: 700px;
-  margin: 0 auto;
+  width: 100%;
   text-align: center;
   position: relative;
   z-index: 1;
 }
+@media (min-width: 900px) { .hero__inner { text-align: center; } }
 
 .hero__eyebrow {
   display: inline-flex;
@@ -601,6 +624,12 @@ ul, ol { list-style: none; }
 }
 @media (min-width: 480px) { .hero__subtitle { font-size: var(--text-md); margin-bottom: 32px; } }
 
+/* Desktop: left-align suggestion chips and location row */
+@media (min-width: 900px) {
+  .location-row { justify-content: flex-start; }
+  .suggestion-chips { justify-content: flex-start; }
+}
+
 /* Search bar */
 .search-bar {
   display: flex;
@@ -608,7 +637,7 @@ ul, ol { list-style: none; }
   background: var(--clr-surface);
   border-radius: var(--radius-xl);
   padding: 5px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.25);
   /* prevent shrink issues on narrow screens */
   min-width: 0;
 }
@@ -1101,19 +1130,20 @@ ul, ol { list-style: none; }
 /* Initial state illustration area */
 .initial-state {
   text-align: center;
-  padding: 48px 20px;
+  padding: 40px 20px 48px;
 }
-.initial-state__graphic {
-  width: 120px; height: 120px;
+
+/* Real image for initial state */
+.initial-state__image {
+  width: min(220px, 70%);
+  height: auto;
   margin: 0 auto 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--clr-primary-light);
-  border-radius: 50%;
-  color: var(--clr-primary);
-  font-size: 48px;
+  display: block;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  object-fit: contain;
 }
+
 .initial-state__title {
   font-size: var(--text-2xl);
   font-weight: 800;
@@ -1126,6 +1156,23 @@ ul, ol { list-style: none; }
   max-width: 400px;
   margin: 0 auto;
 }
+
+/* Real image for empty/no-results state */
+.empty-state__image {
+  width: min(240px, 75%);
+  height: auto;
+  margin: 0 auto 20px;
+  display: block;
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  object-fit: contain;
+}
+
+/* Login illustration */
+.login-illustration {
+  display: none !important;
+}
+
 
 /* --------------------------------------------------------------------------
    16. MODAL
