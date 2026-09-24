@@ -20,7 +20,11 @@ from flask import (
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "medfind-dev-secret-change-in-prod")
 
-DB_PATH = "medfind.db"
+if os.environ.get("VERCEL"):
+    DB_PATH = "/tmp/medfind.db"
+else:
+    DB_PATH = os.environ.get("DB_PATH", "medfind.db")
+
 WEIGHTS_PATH = "model_weights.json"
 DEFAULT_LAT = 20.2961
 DEFAULT_LON = 85.8245
@@ -29,7 +33,17 @@ DEFAULT_LON = 85.8245
 # DB helpers
 # ---------------------------------------------------------------------------
 
+def ensure_db_exists():
+    if not os.path.exists(DB_PATH):
+        try:
+            import seed
+            seed.DB_PATH = DB_PATH
+            seed.seed()
+        except Exception as e:
+            print(f"Auto-seed error: {e}")
+
 def get_db():
+    ensure_db_exists()
     if "db" not in g:
         g.db = sqlite3.connect(DB_PATH)
         g.db.row_factory = sqlite3.Row

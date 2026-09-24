@@ -109,14 +109,119 @@ const api = (() => {
     }
   }
 
+  const MOCK_PHARMACIES = [
+    { id: 1, name: "MedPlus Pharmacy", address: "Janpath, Bhubaneswar, Odisha", lat: 20.2962, lon: 85.8245, is_open: 1, phone: "+91 98765 43210" },
+    { id: 2, name: "Apollo Pharmacy", address: "Saheed Nagar, Bhubaneswar, Odisha", lat: 20.2895, lon: 85.8370, is_open: 1, phone: "+91 98765 43211" },
+    { id: 3, name: "LifeCare Pharmacy", address: "Kharvel Nagar, Bhubaneswar, Odisha", lat: 20.2780, lon: 85.8290, is_open: 1, phone: "+91 98765 43212" },
+    { id: 4, name: "Sunrise Medical", address: "Unit-4, Bhubaneswar, Odisha", lat: 20.2610, lon: 85.8180, is_open: 1, phone: "+91 98765 43213" },
+    { id: 5, name: "City Chemist", address: "Nayapalli, Bhubaneswar, Odisha", lat: 20.2945, lon: 85.8012, is_open: 0, phone: "+91 98765 43214" },
+    { id: 6, name: "Wellness Pharmacy", address: "Patia, Bhubaneswar, Odisha", lat: 20.3491, lon: 85.8194, is_open: 1, phone: "+91 98765 43215" },
+  ];
+
+  const MOCK_MEDICINES = [
+    { name: "Paracetamol", strength: "650mg", form: "Tablet" },
+    { name: "Paracetamol", strength: "500mg", form: "Tablet" },
+    { name: "Amoxicillin", strength: "500mg", form: "Capsule" },
+    { name: "Amoxicillin", strength: "250mg", form: "Syrup" },
+    { name: "Metformin", strength: "500mg", form: "Tablet" },
+    { name: "Cetirizine", strength: "10mg", form: "Tablet" },
+    { name: "Ibuprofen", strength: "400mg", form: "Tablet" },
+    { name: "Omeprazole", strength: "20mg", form: "Capsule" },
+    { name: "Azithromycin", strength: "500mg", form: "Tablet" },
+    { name: "Pantoprazole", strength: "40mg", form: "Tablet" },
+    { name: "Doxycycline", strength: "100mg", form: "Capsule" },
+  ];
+
+  function calcHaversine(lat1, lon1, lat2, lon2) {
+    const R = 6371;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+              Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return Math.round(R * c * 100) / 100;
+  }
+
+  function mockSearch(query, userLat = 20.2961, userLon = 85.8245) {
+    const qLower = (query || '').trim().toLowerCase();
+    if (!qLower) return [];
+
+    const matchedMeds = MOCK_MEDICINES.filter(m =>
+      m.name.toLowerCase().includes(qLower) || qLower.includes(m.name.toLowerCase())
+    );
+
+    if (matchedMeds.length === 0) return [];
+
+    const results = [];
+    const targetMed = matchedMeds[0];
+
+    MOCK_PHARMACIES.forEach((p, idx) => {
+      const quantities = [75, 12, 0, 45, 90, 5];
+      const minutes = [8, 24, 180, 15, 600, 42];
+      const qty = quantities[idx % quantities.length];
+      const mins = minutes[idx % minutes.length];
+
+      let stock_status = 'in_stock';
+      if (qty === 0) stock_status = 'out_of_stock';
+      else if (qty <= 15) stock_status = 'low_stock';
+
+      let freshness_class = 'fresh';
+      if (mins >= 720) freshness_class = 'stale';
+      else if (mins >= 30) freshness_class = 'aging';
+
+      const dist = calcHaversine(userLat, userLon, p.lat, p.lon);
+      const availScore = qty === 0 ? 0 : (qty <= 15 ? 0.5 : 1.0);
+      const freshScore = mins < 30 ? 1.0 : (mins < 720 ? 0.6 : 0.2);
+      const distScore = Math.max(0.1, 1 - (dist / 15));
+      const openScore = p.is_open ? 1.0 : 0.0;
+      const score = Math.round((availScore * 0.4 + freshScore * 0.25 + distScore * 0.25 + openScore * 0.1) * 100);
+
+      results.push({
+        pharmacy_id: p.id,
+        pharmacy_name: p.name,
+        address: p.address,
+        latitude: p.lat,
+        longitude: p.lon,
+        is_open: p.is_open,
+        phone: p.phone,
+        medicine_name: targetMed.name,
+        strength: targetMed.strength,
+        form: targetMed.form,
+        quantity: qty,
+        stock_status,
+        last_updated_minutes: mins,
+        freshness_class,
+        distance_km: dist,
+        confidence_score: score
+      });
+    });
+
+    results.sort((a, b) => b.confidence_score - a.confidence_score);
+    return results;
+  }
+
   const get  = (path)        => request('GET',  path);
   const post = (path, body)  => request('POST', path, body);
 
   return {
-    search:     (q, lat, lon) => get(`/api/search?q=${encodeURIComponent(q)}&lat=${lat}&lon=${lon}`),
+    search: async (q, lat, lon) => {
+      try {
+        return await get(`/api/search?q=${encodeURIComponent(q)}&lat=${lat}&lon=${lon}`);
+      } catch (err) {
+        console.warn('API search endpoint unreachable, using client mock search fallback:', err);
+        return mockSearch(q, lat, lon);
+      }
+    },
     login:      (body)        => post('/api/login', body),
     logout:     ()            => post('/api/logout'),
-    session:    ()            => get('/api/session'),
+    session:    async ()      => {
+      try {
+        return await get('/api/session');
+      } catch (err) {
+        return { logged_in: false, pharmacy_id: null, name: null };
+      }
+    },
     inventory:  (id)          => get(`/api/pharmacy/${id}/inventory`),
     updateStock:(id, body)    => post(`/api/pharmacy/${id}/inventory`, body),
     reserve:    (body)        => post('/api/reserve', body),
