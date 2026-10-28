@@ -12,6 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="stylesheet" href="/static/css/chatbot.css" />
 
   <!-- Inline favicon (pill SVG) -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='10' width='28' height='12' rx='6' fill='%230F9D8A'/><line x1='16' y1='10' x2='16' y2='22' stroke='white' stroke-width='2'/></svg>" />
@@ -41,7 +42,16 @@
     <!-- Desktop nav links -->
     <nav class="navbar__links" role="navigation" aria-label="Main navigation">
       <a href="#/" class="nav-link" data-route="home" id="nav-home">Find Medicine</a>
+      <a href="#/orders" class="nav-link" data-route="orders" id="nav-orders">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        My Orders
+        <span class="nav-badge" id="nav-orders-badge" hidden>0</span>
+      </a>
       <a href="#/login" class="nav-link" data-route="login" id="nav-login">Pharmacy Login</a>
+      <button class="nav-link" id="nav-medbot-btn" style="background:none; border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M12 7v6"></path><path d="M9 10h6"></path></svg>
+        MedBot AI
+      </button>
       <!-- Shown when logged in -->
       <a href="#/dashboard" class="nav-link" data-route="dashboard" id="nav-dashboard" hidden>Dashboard</a>
       <span class="navbar__pharmacy-name" id="nav-pharmacy-name" hidden></span>
@@ -79,10 +89,19 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Find Medicine
       </a>
+      <a href="#/orders" class="mobile-nav-link" data-route="orders" id="mob-nav-orders">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        My Orders
+        <span class="nav-badge" id="mob-orders-badge" hidden>0</span>
+      </a>
       <a href="#/login" class="mobile-nav-link" data-route="login" id="mob-nav-login">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
         Pharmacy Login
       </a>
+      <button class="mobile-nav-link" id="mob-medbot-btn" style="background:none; border:none; width:100%; text-align:left; cursor:pointer;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path><path d="M12 7v6"></path><path d="M9 10h6"></path></svg>
+        MedBot Assistant
+      </button>
       <a href="#/dashboard" class="mobile-nav-link" data-route="dashboard" id="mob-nav-dashboard" hidden>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
         Dashboard
@@ -123,6 +142,30 @@
 </div>
 
 <!-- =====================================================================
+     FLOATING CART BAR (Blinkit / Swiggy style)
+===================================================================== -->
+<div id="floating-cart-bar" class="floating-cart" hidden role="region" aria-label="Cart summary">
+  <div class="floating-cart__inner">
+    <div class="floating-cart__info">
+      <div class="floating-cart__badge">
+        <span class="floating-cart__count" id="cart-pill-count">1</span>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+      </div>
+      <div class="floating-cart__text">
+        <div class="floating-cart__total" id="cart-pill-total">₹0</div>
+        <div class="floating-cart__subtext" id="cart-pill-subtext">From Pharmacy</div>
+      </div>
+    </div>
+    <div class="floating-cart__actions">
+      <button class="btn btn--white btn--sm" id="cart-pill-checkout-btn">
+        <span>View Cart & Order</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- =====================================================================
      FOOTER
 ===================================================================== -->
 <footer class="footer" role="contentinfo">
@@ -157,5 +200,18 @@
 </footer>
 
 <script src="/static/js/app.js"></script>
+<script src="/static/js/chatbot.js"></script>
+<script>
+  // Connect navbar MedBot buttons
+  document.addEventListener('DOMContentLoaded', () => {
+    const openBot = () => {
+      if (window.medBot) window.medBot.open();
+      const mobileMenu = document.getElementById('mobile-menu');
+      if (mobileMenu) mobileMenu.hidden = true;
+    };
+    document.getElementById('nav-medbot-btn')?.addEventListener('click', openBot);
+    document.getElementById('mob-medbot-btn')?.addEventListener('click', openBot);
+  });
+</script>
 </body>
 </html>

@@ -239,6 +239,19 @@ const api = (() => {
     inventory:  (id)          => get(`/api/pharmacy/${id}/inventory`),
     updateStock:(id, body)    => post(`/api/pharmacy/${id}/inventory`, body),
     reserve:    (body)        => post('/api/reserve', body),
+    reservations: (id)        => get(`/api/pharmacy/${id}/reservations`),
+    updateReservationStatus: (pharmacyId, resId, status) => post(`/api/pharmacy/${pharmacyId}/reservations/${resId}/status`, { status }),
+    toggleStoreOpen: (pharmacyId, isOpen) => post(`/api/pharmacy/${pharmacyId}/toggle-open`, { is_open: isOpen }),
+    markAllFresh: (pharmacyId) => post(`/api/pharmacy/${pharmacyId}/mark-all-fresh`),
+    analytics: (pharmacyId)   => get(`/api/pharmacy/${pharmacyId}/analytics`),
+    addMedicine: (pharmacyId, medicineId, quantity) => post(`/api/pharmacy/${pharmacyId}/inventory/add`, { medicine_id: medicineId, quantity }),
+    catalog: () => get('/api/medicines/catalog'),
+    placeOrder: (body) => post('/api/orders', body),
+    getOrder: (code) => get(`/api/orders/${encodeURIComponent(code)}`),
+    updateOrderStatus: (code, status) => post(`/api/orders/${encodeURIComponent(code)}/status`, { status }),
+    listOrders: (phone) => get(`/api/orders${phone ? '?phone=' + encodeURIComponent(phone) : ''}`),
+    pharmacyOrders: (id) => get(`/api/pharmacy/${id}/orders`),
+    updatePharmacyOrderStatus: (pharmacyId, orderId, status) => post(`/api/pharmacy/${pharmacyId}/orders/${orderId}/status`, { status }),
   };
 })();
 
@@ -321,6 +334,167 @@ const toast = (() => {
     warning: (title, desc) => show('warning', title, desc),
     info:    (title, desc) => show('info',    title, desc),
   };
+})();
+
+
+/* ============================================================
+   CART & USER ORDERS STORE (Blinkit / Swiggy style)
+   ============================================================ */
+const userOrders = (() => {
+  const ORDERS_KEY = 'medfind_user_orders_v1';
+  function getCodes() {
+    try { return JSON.parse(localStorage.getItem(ORDERS_KEY) || '[]'); } catch (_) { return []; }
+  }
+  function addCode(code) {
+    try {
+      const list = getCodes().filter(c => c !== code);
+      list.unshift(code);
+      localStorage.setItem(ORDERS_KEY, JSON.stringify(list));
+    } catch (_) {}
+    updateBadge();
+  }
+  function updateBadge() {
+    const badge = document.getElementById('nav-orders-badge');
+    const mobBadge = document.getElementById('mob-orders-badge');
+    const codes = getCodes();
+    const count = codes.length;
+    [badge, mobBadge].forEach(b => {
+      if (b) {
+        if (count > 0) {
+          b.textContent = count;
+          b.hidden = false;
+        } else {
+          b.hidden = true;
+        }
+      }
+    });
+  }
+  return { getCodes, addCode, updateBadge };
+})();
+
+const cart = (() => {
+  const CART_KEY = 'medfind_cart_v1';
+
+  function load() {
+    try {
+      const saved = localStorage.getItem(CART_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (_) {}
+    return { pharmacy_id: null, pharmacy_name: null, pharmacy_address: null, items: [] };
+  }
+
+  function save(data) {
+    try {
+      localStorage.setItem(CART_KEY, JSON.stringify(data));
+    } catch (_) {}
+    updateUI();
+  }
+
+  function get() {
+    return load();
+  }
+
+  function addItem(item, qty = 1) {
+    const current = load();
+    if (current.pharmacy_id && current.pharmacy_id !== item.pharmacy_id && current.items.length > 0) {
+      const confirmReplace = confirm(
+        `Your cart currently has medicines from "${current.pharmacy_name}".\n\nStart a new cart with items from "${item.pharmacy}"?`
+      );
+      if (!confirmReplace) return false;
+      current.items = [];
+    }
+
+    current.pharmacy_id = item.pharmacy_id;
+    current.pharmacy_name = item.pharmacy;
+    current.pharmacy_address = item.address;
+
+    const existing = current.items.find(
+      i => i.medicine.toLowerCase() === item.medicine.toLowerCase() && i.strength === item.strength
+    );
+    const maxQty = item.quantity || 99;
+    if (existing) {
+      existing.quantity = Math.min(maxQty, existing.quantity + qty);
+    } else {
+      current.items.push({
+        medicine_id: item.medicine_id,
+        medicine: item.medicine,
+        strength: item.strength,
+        form: item.form,
+        price: item.price || 35.0,
+        quantity: Math.min(maxQty, qty),
+        max_quantity: maxQty
+      });
+    }
+
+    save(current);
+    toast.success('Added to Order Basket', `${item.medicine} added from ${item.pharmacy}.`);
+    return true;
+  }
+
+  function updateQty(medName, strength, newQty) {
+    const current = load();
+    const idx = current.items.findIndex(
+      i => i.medicine.toLowerCase() === medName.toLowerCase() && i.strength === strength
+    );
+    if (idx !== -1) {
+      if (newQty <= 0) {
+        current.items.splice(idx, 1);
+      } else {
+        current.items[idx].quantity = Math.min(current.items[idx].max_quantity || 99, newQty);
+      }
+    }
+    if (current.items.length === 0) {
+      current.pharmacy_id = null;
+      current.pharmacy_name = null;
+      current.pharmacy_address = null;
+    }
+    save(current);
+  }
+
+  function removeItem(medName, strength) {
+    updateQty(medName, strength, 0);
+  }
+
+  function clear() {
+    save({ pharmacy_id: null, pharmacy_name: null, pharmacy_address: null, items: [] });
+  }
+
+  function getCount() {
+    const current = load();
+    return current.items.reduce((sum, i) => sum + i.quantity, 0);
+  }
+
+  function getSubtotal() {
+    const current = load();
+    return current.items.reduce((sum, i) => sum + (i.price * i.quantity), 0);
+  }
+
+  function updateUI() {
+    const bar = document.getElementById('floating-cart-bar');
+    const pillCount = document.getElementById('cart-pill-count');
+    const pillTotal = document.getElementById('cart-pill-total');
+    const pillSubtext = document.getElementById('cart-pill-subtext');
+
+    const current = load();
+    const count = getCount();
+    const total = getSubtotal();
+
+    const isCheckoutOrTrack = window.location.hash.startsWith('#/checkout') || window.location.hash.startsWith('#/track');
+
+    if (bar) {
+      const showBar = count > 0 && !isCheckoutOrTrack;
+      bar.hidden = !showBar;
+      document.body.classList.toggle('has-floating-cart', showBar);
+      if (showBar) {
+        if (pillCount) pillCount.textContent = count;
+        if (pillTotal) pillTotal.textContent = `₹${total.toFixed(0)}`;
+        if (pillSubtext) pillSubtext.textContent = `From ${current.pharmacy_name || 'Pharmacy'}`;
+      }
+    }
+    userOrders.updateBadge();
+  }
+
+  return { get, addItem, updateQty, removeItem, clear, getCount, getSubtotal, updateUI };
 })();
 
 
@@ -468,6 +642,12 @@ const components = (() => {
     // Availability
     medRow.append(availBadge(item.availability, item.quantity));
 
+    // Price tag
+    const priceTag = document.createElement('span');
+    priceTag.className = 'result-card__price-tag';
+    priceTag.textContent = `₹${item.price || 35}`;
+    medRow.append(priceTag);
+
     // Meta
     const meta = document.createElement('div');
     meta.className = 'result-card__meta';
@@ -488,17 +668,48 @@ const components = (() => {
     footer.className = 'result-card__footer';
     footer.append(scoreRing(item.score));
 
+    const actionGroup = document.createElement('div');
+    actionGroup.className = 'result-card__actions';
+
+    // 1. Order Express (Blinkit / Swiggy style)
+    const orderBtn = document.createElement('button');
+    orderBtn.className = 'btn btn--primary btn--sm btn--order-now';
+    orderBtn.disabled = item.availability === 'out_of_stock';
+    orderBtn.innerHTML = `⚡ Order Now`;
+    orderBtn.title = 'Order for 15-20 min Express Delivery';
+    orderBtn.addEventListener('click', () => {
+      if (item.availability !== 'out_of_stock') {
+        cart.addItem(item, 1);
+        router.navigate('#/checkout');
+      }
+    });
+
+    // 2. Add to Cart button
+    const addCartBtn = document.createElement('button');
+    addCartBtn.className = 'btn btn--secondary btn--sm btn--add-cart';
+    addCartBtn.disabled = item.availability === 'out_of_stock';
+    addCartBtn.innerHTML = `+ Cart`;
+    addCartBtn.title = 'Add to medicine order basket';
+    addCartBtn.addEventListener('click', () => {
+      if (item.availability !== 'out_of_stock') {
+        cart.addItem(item, 1);
+      }
+    });
+
+    // 3. 30-min Counter Hold Reservation
     const reserveBtn = document.createElement('button');
-    reserveBtn.className = 'btn btn--primary btn--sm';
+    reserveBtn.className = 'btn btn--ghost btn--sm btn--hold-reserve';
     reserveBtn.disabled = item.availability === 'out_of_stock';
-    reserveBtn.setAttribute('aria-label', `Reserve ${item.medicine} at ${item.pharmacy}`);
-    reserveBtn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg> Reserve`;
+    reserveBtn.innerHTML = `Hold (Pickup)`;
+    reserveBtn.title = 'Hold at pharmacy counter for 30 minutes';
     reserveBtn.addEventListener('click', () => {
       if (item.availability !== 'out_of_stock') {
         modal.openReserve(item);
       }
     });
-    footer.append(reserveBtn);
+
+    actionGroup.append(orderBtn, addCartBtn, reserveBtn);
+    footer.append(actionGroup);
 
     card.append(header, medRow, meta, footer);
     return card;
@@ -651,7 +862,20 @@ const modal = (() => {
       }
     });
 
-    content.append(titleEl, subtitleEl, infoCard, qtyLabel, stepper, errEl, confirmBtn);
+    // Delivery Switch button
+    const expressOrderBtn = document.createElement('button');
+    expressOrderBtn.type = 'button';
+    expressOrderBtn.className = 'btn btn--secondary';
+    expressOrderBtn.style.cssText = 'width: 100%; margin-top: 10px; font-weight: 700;';
+    expressOrderBtn.innerHTML = `🛵 Switch to Home Delivery Order (15-20 min)`;
+    expressOrderBtn.addEventListener('click', () => {
+      const qty = parseInt(input.value, 10) || 1;
+      cart.addItem(item, qty);
+      close();
+      router.navigate('#/checkout');
+    });
+
+    content.append(titleEl, subtitleEl, infoCard, qtyLabel, stepper, errEl, confirmBtn, expressOrderBtn);
     open();
   }
 
@@ -1181,18 +1405,58 @@ const views = (() => {
     hdr.className = 'dashboard-header';
     const titleEl = document.createElement('h1');
     titleEl.className = 'dashboard-title';
-    titleEl.innerHTML = `Welcome, <span></span>`;
+    titleEl.innerHTML = `Operations Dashboard — <span></span>`;
     titleEl.querySelector('span').textContent = session.name;
     hdr.append(titleEl);
     page.append(hdr);
 
-    // Stat grid placeholder
+    // Operations Bar (Store Toggle + Power Tools)
+    const opsBar = document.createElement('div');
+    opsBar.className = 'dashboard-ops-bar';
+    opsBar.id = 'dashboard-ops-bar';
+    page.append(opsBar);
+
+    // Tabs Navigation
+    const tabsNav = document.createElement('div');
+    tabsNav.className = 'ops-tabs';
+    tabsNav.innerHTML = `
+      <button class="ops-tab active" data-tab="inventory" type="button" id="tab-btn-inventory">
+        📦 Live Inventory
+      </button>
+      <button class="ops-tab" data-tab="reservations" type="button" id="tab-btn-reservations">
+        🛎️ Reservations Queue <span class="ops-tab-badge" id="res-pending-badge" style="display:none;">0</span>
+      </button>
+      <button class="ops-tab" data-tab="orders" type="button" id="tab-btn-orders">
+        🛵 Delivery Orders <span class="ops-tab-badge" id="orders-pending-badge" style="display:none;">0</span>
+      </button>
+      <button class="ops-tab" data-tab="analytics" type="button" id="tab-btn-analytics">
+        📊 Demand &amp; Restock Analytics
+      </button>
+    `;
+    page.append(tabsNav);
+
+    // Tab Contents Containers
+    const tabContentInv = document.createElement('div');
+    tabContentInv.id = 'tab-content-inventory';
+
+    const tabContentRes = document.createElement('div');
+    tabContentRes.id = 'tab-content-reservations';
+    tabContentRes.style.display = 'none';
+
+    const tabContentOrders = document.createElement('div');
+    tabContentOrders.id = 'tab-content-orders';
+    tabContentOrders.style.display = 'none';
+
+    const tabContentAnalytics = document.createElement('div');
+    tabContentAnalytics.id = 'tab-content-analytics';
+    tabContentAnalytics.style.display = 'none';
+
+    // 1. Setup Inventory Tab Elements
     const statGrid = document.createElement('div');
     statGrid.className = 'stat-grid';
     statGrid.id = 'stat-grid';
-    page.append(statGrid);
+    tabContentInv.append(statGrid);
 
-    // Toolbar
     const toolbar = document.createElement('div');
     toolbar.className = 'inventory-toolbar';
     toolbar.innerHTML = `
@@ -1205,19 +1469,123 @@ const views = (() => {
       <button class="filter-toggle" id="stale-only-btn" type="button" aria-pressed="false" aria-label="Show only stale inventory">
         <span class="toggle-dot" aria-hidden="true"></span> Needs update only
       </button>`;
-    page.append(toolbar);
+    tabContentInv.append(toolbar);
 
-    // Inventory grid
     const invGrid = document.createElement('div');
     invGrid.className = 'inventory-grid';
     invGrid.id = 'inv-grid';
     invGrid.setAttribute('aria-live', 'polite');
     invGrid.innerHTML = `<div class="spinner" aria-label="Loading inventory…"></div>`;
-    page.append(invGrid);
+    tabContentInv.append(invGrid);
 
+    page.append(tabContentInv, tabContentRes, tabContentOrders, tabContentAnalytics);
     root.append(page);
 
-    // Fetch inventory
+    // Render Operations Bar
+    let isStoreOpen = session.is_open ?? true;
+    function renderOpsBar() {
+      opsBar.innerHTML = `
+        <div class="store-toggle-wrap">
+          <button class="store-toggle-btn ${isStoreOpen ? 'store-toggle-btn--open' : 'store-toggle-btn--closed'}" id="store-toggle-btn" type="button" title="Click to toggle store open/close">
+            <span>●</span> ${isStoreOpen ? 'Store Open • Accepting Holds' : 'Store Closed • Paused'}
+          </button>
+          <span style="font-size:var(--text-xs); color:var(--clr-text-500);">(Click to toggle live status)</span>
+        </div>
+        <div class="dashboard-ops-actions">
+          <button class="btn btn--secondary btn--sm" id="mark-all-fresh-btn" type="button" title="Update all inventory timestamps to Now">
+            ⚡ Mark All Stock Fresh
+          </button>
+          <button class="btn btn--primary btn--sm" id="add-medicine-btn" type="button">
+            + Add Medicine to Store
+          </button>
+        </div>
+      `;
+
+      document.getElementById('store-toggle-btn')?.addEventListener('click', async () => {
+        try {
+          const res = await api.toggleStoreOpen(session.pharmacy_id, !isStoreOpen);
+          isStoreOpen = res.is_open;
+          session.is_open = isStoreOpen;
+          renderOpsBar();
+          toast.success(isStoreOpen ? 'Store Open' : 'Store Closed', `Pharmacy status updated to ${isStoreOpen ? 'Open' : 'Closed'}.`);
+        } catch (err) {
+          toast.error('Toggle failed', err.message);
+        }
+      });
+
+      document.getElementById('mark-all-fresh-btn')?.addEventListener('click', async () => {
+        const btn = document.getElementById('mark-all-fresh-btn');
+        btn.disabled = true;
+        btn.textContent = 'Updating…';
+        try {
+          const res = await api.markAllFresh(session.pharmacy_id);
+          btn.textContent = 'Refreshed ✓';
+          toast.success('Freshness Boosted', `All ${res.updated_count} medicines marked fresh!`);
+          const invItems = state.get().inventory.items;
+          invItems.forEach(i => {
+            i.freshness = 'fresh';
+            i.last_updated_minutes_ago = 0;
+          });
+          renderStats(invItems);
+          renderInventory();
+          setTimeout(() => { btn.disabled = false; btn.textContent = '⚡ Mark All Stock Fresh'; }, 2000);
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '⚡ Mark All Stock Fresh';
+          toast.error('Failed to refresh', err.message);
+        }
+      });
+
+      document.getElementById('add-medicine-btn')?.addEventListener('click', () => {
+        openAddMedicineDialog(session);
+      });
+    }
+
+    renderOpsBar();
+
+    // Tab Switching
+    tabsNav.querySelectorAll('.ops-tab').forEach(tabBtn => {
+      tabBtn.addEventListener('click', () => {
+        const target = tabBtn.getAttribute('data-tab');
+        tabsNav.querySelectorAll('.ops-tab').forEach(t => t.classList.remove('active'));
+        tabBtn.classList.add('active');
+
+        tabContentInv.style.display = target === 'inventory' ? 'block' : 'none';
+        tabContentRes.style.display = target === 'reservations' ? 'block' : 'none';
+        tabContentOrders.style.display = target === 'orders' ? 'block' : 'none';
+        tabContentAnalytics.style.display = target === 'analytics' ? 'block' : 'none';
+
+        if (target === 'reservations') {
+          loadAndRenderReservations(tabContentRes, session);
+        } else if (target === 'orders') {
+          loadAndRenderPharmacyOrders(tabContentOrders, session);
+        } else if (target === 'analytics') {
+          loadAndRenderAnalytics(tabContentAnalytics, session);
+        }
+      });
+    });
+
+    // Check reservations count for tab badge
+    api.reservations(session.pharmacy_id).then(resList => {
+      const pendingCount = resList.filter(r => r.status === 'pending').length;
+      const badge = document.getElementById('res-pending-badge');
+      if (badge && pendingCount > 0) {
+        badge.textContent = pendingCount;
+        badge.style.display = 'inline-block';
+      }
+    }).catch(() => {});
+
+    // Check delivery orders count for tab badge
+    api.pharmacyOrders(session.pharmacy_id).then(ordList => {
+      const pendingCount = ordList.filter(o => o.status === 'placed' || o.status === 'preparing').length;
+      const badge = document.getElementById('orders-pending-badge');
+      if (badge && pendingCount > 0) {
+        badge.textContent = pendingCount;
+        badge.style.display = 'inline-block';
+      }
+    }).catch(() => {});
+
+    // Fetch Inventory
     try {
       const items = await api.inventory(session.pharmacy_id);
       state.set({ inventory: { items, status: 'done', filter: '', staleOnly: false } });
@@ -1461,6 +1829,1346 @@ const views = (() => {
     }
   }
 
+  // ------------------------------------------------------------
+  // Reservations Queue Tab
+  // ------------------------------------------------------------
+  async function loadAndRenderReservations(container, session) {
+    container.innerHTML = `<div class="spinner" aria-label="Loading reservations…"></div>`;
+
+    try {
+      const list = await api.reservations(session.pharmacy_id);
+      let currentFilter = 'all';
+
+      function renderQueue() {
+        const filtered = list.filter(r => {
+          if (currentFilter === 'all') return true;
+          return r.status === currentFilter;
+        });
+
+        const pendingCount = list.filter(r => r.status === 'pending').length;
+        const badge = document.getElementById('res-pending-badge');
+        if (badge) {
+          badge.textContent = pendingCount;
+          badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
+        }
+
+        container.innerHTML = `
+          <div class="res-queue">
+            <div class="res-queue-toolbar">
+              <div class="res-filter-group">
+                <button class="res-filter-btn ${currentFilter === 'all' ? 'active' : ''}" data-filter="all">All (${list.length})</button>
+                <button class="res-filter-btn ${currentFilter === 'pending' ? 'active' : ''}" data-filter="pending">Pending (${list.filter(r => r.status === 'pending').length})</button>
+                <button class="res-filter-btn ${currentFilter === 'confirmed' ? 'active' : ''}" data-filter="confirmed">Confirmed (${list.filter(r => r.status === 'confirmed').length})</button>
+                <button class="res-filter-btn ${currentFilter === 'completed' ? 'active' : ''}" data-filter="completed">Fulfilled (${list.filter(r => r.status === 'completed').length})</button>
+                <button class="res-filter-btn ${currentFilter === 'cancelled' ? 'active' : ''}" data-filter="cancelled">Cancelled (${list.filter(r => r.status === 'cancelled' || r.status === 'expired').length})</button>
+              </div>
+              <button class="btn btn--ghost btn--sm" id="res-refresh-btn">
+                🔄 Refresh Queue
+              </button>
+            </div>
+            <div class="res-list-container" id="res-list-items"></div>
+          </div>
+        `;
+
+        const listDiv = container.querySelector('#res-list-items');
+
+        if (filtered.length === 0) {
+          listDiv.innerHTML = `
+            <div class="empty-state" style="padding:48px 20px;">
+              <p class="empty-state__desc">No customer reservations in this category.</p>
+            </div>
+          `;
+        } else {
+          filtered.forEach(res => {
+            const card = document.createElement('div');
+            card.className = `res-order-card res-order-card--${res.status}`;
+
+            const statusBadges = {
+              pending: '<span class="badge badge--amber">● Pending Hold</span>',
+              confirmed: '<span class="badge badge--green">● Confirmed Ready</span>',
+              completed: '<span class="badge badge--green">✓ Picked Up &amp; Fulfilled</span>',
+              cancelled: '<span class="badge badge--red">✕ Cancelled</span>',
+              expired: '<span class="badge badge--red">✕ Hold Expired</span>'
+            };
+
+            const holdTimeInfo = res.status === 'pending'
+              ? (res.remaining_minutes > 0 ? `<span style="color:var(--clr-amber); font-weight:700;">⏳ ${res.remaining_minutes}m left to hold</span>` : '<span style="color:var(--clr-red);">Hold Expired</span>')
+              : `<span style="color:var(--clr-text-500);">${utils.formatAgo(res.minutes_ago)}</span>`;
+
+            card.innerHTML = `
+              <div class="res-order-card__header">
+                <div>
+                  <span class="res-order-code">${res.request_id}</span>
+                  <span style="font-size:var(--text-xs); color:var(--clr-text-500); margin-left:8px;">${res.created_at}</span>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                  ${holdTimeInfo}
+                  ${statusBadges[res.status] || ''}
+                </div>
+              </div>
+              <div class="res-order-card__body">
+                <div>
+                  <div class="res-order-med">${utils.escape(res.medicine_name)}</div>
+                  <div class="res-order-qty">Quantity: <strong>${res.quantity}</strong> unit(s)</div>
+                </div>
+                <div class="res-order-actions">
+                  ${res.status === 'pending' ? `
+                    <button class="btn btn--primary btn--sm res-act-btn" data-act="confirmed" data-id="${res.id}">
+                      ✓ Confirm (Ready for Pickup)
+                    </button>
+                    <button class="btn btn--ghost btn--sm res-act-btn" data-act="cancelled" data-id="${res.id}">
+                      ✕ Out of Stock / Reject
+                    </button>
+                  ` : ''}
+                  ${res.status === 'confirmed' ? `
+                    <button class="btn btn--primary btn--sm res-act-btn" data-act="completed" data-id="${res.id}">
+                      ✓ Handed Over &amp; Complete
+                    </button>
+                    <button class="btn btn--ghost btn--sm res-act-btn" data-act="cancelled" data-id="${res.id}">
+                      ✕ Cancel Order
+                    </button>
+                  ` : ''}
+                  <a href="https://api.whatsapp.com/send?text=${encodeURIComponent('Hello! Your reservation ' + res.request_id + ' for ' + res.medicine_name + ' (' + res.quantity + 'x) at ' + session.name + ' is confirmed. Please show this message at counter.')}" target="_blank" rel="noopener" class="btn btn--secondary btn--sm">
+                    💬 WhatsApp Slip
+                  </a>
+                </div>
+              </div>
+            `;
+
+            card.querySelectorAll('.res-act-btn').forEach(btn => {
+              btn.addEventListener('click', async () => {
+                const act = btn.getAttribute('data-act');
+                const id = parseInt(btn.getAttribute('data-id'), 10);
+                btn.disabled = true;
+                try {
+                  await api.updateReservationStatus(session.pharmacy_id, id, act);
+                  res.status = act;
+                  toast.success('Reservation Updated', `Order ${res.request_id} marked as ${act}.`);
+                  // If completed, refresh inventory too!
+                  if (act === 'completed') {
+                    api.inventory(session.pharmacy_id).then(newItems => {
+                      state.set({ inventory: { items: newItems } });
+                      renderStats(newItems);
+                      renderInventory();
+                    });
+                  }
+                  renderQueue();
+                } catch (err) {
+                  btn.disabled = false;
+                  toast.error('Update failed', err.message);
+                }
+              });
+            });
+
+            listDiv.appendChild(card);
+          });
+        }
+
+        // Filter button listeners
+        container.querySelectorAll('.res-filter-btn').forEach(fb => {
+          fb.addEventListener('click', () => {
+            currentFilter = fb.getAttribute('data-filter');
+            renderQueue();
+          });
+        });
+
+        // Refresh button
+        container.querySelector('#res-refresh-btn')?.addEventListener('click', () => {
+          loadAndRenderReservations(container, session);
+        });
+      }
+
+      renderQueue();
+
+    } catch (err) {
+      container.innerHTML = `<div class="empty-state"><p class="empty-state__desc">Failed to load reservations: ${utils.escape(err.message)}</p></div>`;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Pharmacy Delivery Orders Tab
+  // ------------------------------------------------------------
+  async function loadAndRenderPharmacyOrders(container, session) {
+    container.innerHTML = `<div class="spinner" aria-label="Loading delivery orders…"></div>`;
+
+    try {
+      const list = await api.pharmacyOrders(session.pharmacy_id);
+      let currentFilter = 'active';
+
+      function renderOrders() {
+        const filtered = list.filter(o => {
+          if (currentFilter === 'active') return o.status === 'placed' || o.status === 'preparing' || o.status === 'out_for_delivery';
+          if (currentFilter === 'completed') return o.status === 'delivered';
+          if (currentFilter === 'all') return true;
+          return o.status === currentFilter;
+        });
+
+        const activeCount = list.filter(o => o.status === 'placed' || o.status === 'preparing' || o.status === 'out_for_delivery').length;
+        const badge = document.getElementById('orders-pending-badge');
+        if (badge) {
+          badge.textContent = activeCount;
+          badge.style.display = activeCount > 0 ? 'inline-block' : 'none';
+        }
+
+        container.innerHTML = `
+          <div class="res-queue">
+            <div class="res-queue-toolbar">
+              <div class="res-filter-group">
+                <button class="res-filter-btn ${currentFilter === 'active' ? 'active' : ''}" data-filter="active">Active Orders (${activeCount})</button>
+                <button class="res-filter-btn ${currentFilter === 'all' ? 'active' : ''}" data-filter="all">All (${list.length})</button>
+                <button class="res-filter-btn ${currentFilter === 'completed' ? 'active' : ''}" data-filter="completed">Delivered (${list.filter(o => o.status === 'delivered').length})</button>
+              </div>
+              <button class="btn btn--ghost btn--sm" id="ord-refresh-btn">
+                🔄 Refresh Orders
+              </button>
+            </div>
+            <div class="res-list-container" id="ord-list-items"></div>
+          </div>
+        `;
+
+        const listDiv = container.querySelector('#ord-list-items');
+        if (filtered.length === 0) {
+          listDiv.innerHTML = `
+            <div class="empty-state card" style="padding:48px 20px; text-align: center;">
+              <div style="font-size: 40px; margin-bottom: 12px;">🛵</div>
+              <p class="empty-state__desc">No incoming delivery orders in this view.</p>
+            </div>`;
+        } else {
+          filtered.forEach(order => {
+            const card = document.createElement('div');
+            card.className = `order-card card`;
+            const itemsHtml = (order.items || []).map(i => `
+              <div class="order-card__item">
+                <strong>${i.quantity}x ${utils.escape(i.medicine_name || i.medicine)}</strong> ${utils.escape(i.strength || '')} (${utils.escape(i.form || 'Tablet')}) — ₹${i.line_total || (i.price * i.quantity)}
+              </div>
+            `).join('');
+
+            const statusColors = {
+              placed: 'badge--primary',
+              preparing: 'badge--amber',
+              out_for_delivery: 'badge--green',
+              delivered: 'badge--green',
+              cancelled: 'badge--red'
+            };
+
+            card.innerHTML = `
+              <div class="order-card__header">
+                <div>
+                  <span class="order-card__code">${utils.escape(order.order_code)}</span>
+                  <span class="badge ${statusColors[order.status] || 'badge--muted'}" style="margin-left: 8px;">● ${order.status.replace(/_/g, ' ').toUpperCase()}</span>
+                </div>
+                <div class="order-card__meta">
+                  OTP: <strong>${utils.escape(order.delivery_otp || '----')}</strong> • Placed ${order.minutes_ago ? order.minutes_ago + 'm ago' : 'Recently'}
+                </div>
+              </div>
+              <div style="font-size: 13px; color: var(--clr-text-700); margin-bottom: 12px; display: flex; flex-direction: column; gap: 4px;">
+                <div>👤 <strong>Customer:</strong> ${utils.escape(order.customer_name)} (${utils.escape(order.customer_phone)})</div>
+                <div>📍 <strong>Address:</strong> ${utils.escape(order.customer_address)}</div>
+                <div>🛵 <strong>Delivery Partner:</strong> ${utils.escape(order.rider_name || 'Ramesh Kumar')} (${utils.escape(order.rider_phone || '')})</div>
+              </div>
+              <div class="order-card__items">
+                ${itemsHtml}
+              </div>
+              <div class="order-card__footer">
+                <div class="order-card__total">Bill Total: ₹${order.total_amount} <span style="font-size: 11px; font-weight: normal; color: var(--clr-text-500);">(${order.payment_method.toUpperCase()})</span></div>
+                <div class="order-actions-wrap" style="display: flex; gap: 8px;">
+                  ${order.status === 'placed' ? `<button class="btn btn--primary btn--sm btn-pack-order">Start Packing 💊</button>` : ''}
+                  ${order.status === 'preparing' ? `<button class="btn btn--primary btn--sm btn-dispatch-order">Hand to Rider 🛵</button>` : ''}
+                  ${order.status === 'out_for_delivery' ? `<button class="btn btn--secondary btn--sm btn-complete-order">Mark Delivered ✅</button>` : ''}
+                  <a href="#/track/${encodeURIComponent(order.order_code)}" class="btn btn--ghost btn--sm">Track Live ➔</a>
+                </div>
+              </div>
+            `;
+
+            card.querySelector('.btn-pack-order')?.addEventListener('click', async (e) => {
+              e.target.disabled = true;
+              await api.updatePharmacyOrderStatus(session.pharmacy_id, order.id, 'preparing');
+              order.status = 'preparing';
+              toast.success('Order Packed', `Order ${order.order_code} is ready for rider handover.`);
+              renderOrders();
+            });
+
+            card.querySelector('.btn-dispatch-order')?.addEventListener('click', async (e) => {
+              e.target.disabled = true;
+              await api.updatePharmacyOrderStatus(session.pharmacy_id, order.id, 'out_for_delivery');
+              order.status = 'out_for_delivery';
+              toast.success('Dispatched', `Order ${order.order_code} handed over to delivery partner.`);
+              renderOrders();
+            });
+
+            card.querySelector('.btn-complete-order')?.addEventListener('click', async (e) => {
+              e.target.disabled = true;
+              await api.updatePharmacyOrderStatus(session.pharmacy_id, order.id, 'delivered');
+              order.status = 'delivered';
+              toast.success('Delivered', `Order ${order.order_code} marked as delivered.`);
+              renderOrders();
+            });
+
+            listDiv.append(card);
+          });
+        }
+
+        container.querySelectorAll('.res-filter-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            currentFilter = btn.getAttribute('data-filter');
+            renderOrders();
+          });
+        });
+
+        container.querySelector('#ord-refresh-btn')?.addEventListener('click', () => {
+          loadAndRenderPharmacyOrders(container, session);
+        });
+      }
+
+      renderOrders();
+    } catch (err) {
+      container.innerHTML = `<p class="form-error">Failed to load orders: ${utils.escape(err.message)}</p>`;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Demand Analytics & Restock Predictor Tab
+  // ------------------------------------------------------------
+  async function loadAndRenderAnalytics(container, session) {
+    container.innerHTML = `<div class="spinner" aria-label="Loading analytics…"></div>`;
+
+    try {
+      const data = await api.analytics(session.pharmacy_id);
+      const resData = data.reservations;
+      const invData = data.inventory_health;
+      const insights = data.demand_insights || [];
+
+      const rowsHtml = insights.map(item => {
+        const badgeCls = item.urgency.includes('Critical')
+          ? 'urgency-badge--critical'
+          : (item.urgency.includes('Low') ? 'urgency-badge--low' : 'urgency-badge--healthy');
+
+        return `
+          <tr>
+            <td><strong>${utils.escape(item.name)}</strong></td>
+            <td><span class="badge ${item.demand_level.includes('High') ? 'badge--amber' : 'badge--green'}">${item.demand_level}</span></td>
+            <td>${item.searches_30d.toLocaleString()} local searches</td>
+            <td><strong>${item.current_stock}</strong> in stock</td>
+            <td><span class="urgency-badge ${badgeCls}">${item.urgency}</span></td>
+            <td>
+              <button class="btn btn--secondary btn--sm quick-restock-btn" data-name="${utils.escape(item.name)}">
+                + Restock (+20)
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <div style="display:flex; flex-direction:column; gap:20px;">
+          <!-- KPI Cards -->
+          <div class="analytics-grid">
+            <div class="stat-card">
+              <div class="stat-card__value stat-card__value--green">${resData.fulfillment_rate}%</div>
+              <div class="stat-card__label">Order Fulfillment Rate</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card__value">${resData.total}</div>
+              <div class="stat-card__label">Total Customer Holds</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card__value stat-card__value--green">${invData.freshness_health_pct}%</div>
+              <div class="stat-card__label">Inventory Freshness Score</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-card__value stat-card__value--amber">${invData.low_stock + invData.out_of_stock}</div>
+              <div class="stat-card__label">Medicines Needing Restock</div>
+            </div>
+          </div>
+
+          <!-- Neighborhood Demand Table -->
+          <div class="demand-table-wrap">
+            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; flex-wrap:wrap; gap:8px;">
+              <div>
+                <h3 style="margin:0; font-size:var(--text-lg); font-weight:800; color:var(--clr-text-900);">
+                  📍 High-Demand Medicines in Your Area (Neighborhood Search Index)
+                </h3>
+                <p style="margin:4px 0 0 0; font-size:var(--text-sm); color:var(--clr-text-500);">
+                  Real-time medicine demand trends from nearby customers compared against your store's current inventory.
+                </p>
+              </div>
+            </div>
+            <table class="demand-table">
+              <thead>
+                <tr>
+                  <th>Medicine</th>
+                  <th>Area Demand</th>
+                  <th>Monthly Searches</th>
+                  <th>Your Stock</th>
+                  <th>Restock Urgency</th>
+                  <th>Quick Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+
+      // Quick restock button handlers
+      container.querySelectorAll('.quick-restock-btn').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const medName = btn.getAttribute('data-name');
+          btn.disabled = true;
+          btn.textContent = 'Updating…';
+
+          try {
+            // Find in current inventory
+            const items = state.get().inventory.items;
+            const existing = items.find(i => i.name.toLowerCase().includes(medName.toLowerCase()));
+
+            if (existing) {
+              const newQty = existing.quantity + 20;
+              await api.updateStock(session.pharmacy_id, { medicine_id: existing.medicine_id, quantity: newQty });
+              existing.quantity = newQty;
+              existing.freshness = 'fresh';
+              toast.success('Restocked!', `${medName} increased by +20 (Total: ${newQty}).`);
+            } else {
+              // Add from catalog
+              const cat = await api.catalog();
+              const catItem = cat.find(c => c.name.toLowerCase().includes(medName.toLowerCase()));
+              if (catItem) {
+                await api.addMedicine(session.pharmacy_id, catItem.id, 20);
+                toast.success('Added & Restocked!', `${medName} added to inventory with 20 units.`);
+              }
+            }
+
+            // Refresh analytics and inventory
+            loadAndRenderAnalytics(container, session);
+            api.inventory(session.pharmacy_id).then(newItems => {
+              state.set({ inventory: { items: newItems } });
+              renderStats(newItems);
+              renderInventory();
+            });
+          } catch (err) {
+            btn.disabled = false;
+            btn.textContent = '+ Restock (+20)';
+            toast.error('Restock failed', err.message);
+          }
+        });
+      });
+
+    } catch (err) {
+      container.innerHTML = `<div class="empty-state"><p class="empty-state__desc">Failed to load analytics: ${utils.escape(err.message)}</p></div>`;
+    }
+  }
+
+  // ------------------------------------------------------------
+  // Add Medicine Dialog Modal
+  // ------------------------------------------------------------
+  async function openAddMedicineDialog(session) {
+    const backdrop = document.getElementById('reserve-modal-backdrop');
+    const content = document.getElementById('reserve-modal-content');
+    if (!backdrop || !content) return;
+
+    content.innerHTML = `<div class="spinner" aria-label="Loading catalog…"></div>`;
+    backdrop.hidden = false;
+
+    try {
+      const catalog = await api.catalog();
+      const currentItems = state.get().inventory.items;
+      const currentIds = new Set(currentItems.map(i => i.medicine_id));
+      const availableToAdd = catalog.filter(c => !currentIds.has(c.id));
+
+      if (availableToAdd.length === 0) {
+        content.innerHTML = `
+          <h2 class="modal__title">All Medicines Listed</h2>
+          <p class="modal__subtitle">Your pharmacy currently lists all medicines in the MedFind catalog!</p>
+          <button class="btn btn--secondary" style="width:100%; margin-top:16px;" id="close-add-modal-btn">Close</button>
+        `;
+        content.querySelector('#close-add-modal-btn')?.addEventListener('click', () => { backdrop.hidden = true; });
+        return;
+      }
+
+      const optionsHtml = availableToAdd.map(c => `
+        <option value="${c.id}">${utils.escape(c.name)} ${utils.escape(c.strength)} (${utils.escape(c.form)})</option>
+      `).join('');
+
+      content.innerHTML = `
+        <h2 class="modal__title">+ Add Medicine to Store</h2>
+        <p class="modal__subtitle">Select a medicine from the verified MedFind catalog and set your counter stock.</p>
+        <div style="display:flex; flex-direction:column; gap:14px; margin-top:16px;">
+          <div>
+            <label class="form-label" for="add-med-select">Medicine</label>
+            <select id="add-med-select" class="form-input" style="width:100%;">
+              ${optionsHtml}
+            </select>
+          </div>
+          <div>
+            <label class="form-label" for="add-med-qty">Initial Stock Quantity</label>
+            <input type="number" id="add-med-qty" class="form-input" value="30" min="1" max="1000" style="width:100%;" />
+          </div>
+          <button class="btn btn--primary" id="confirm-add-med-btn" style="width:100%; margin-top:8px;">
+            Add to My Inventory
+          </button>
+        </div>
+      `;
+
+      content.querySelector('#confirm-add-med-btn')?.addEventListener('click', async () => {
+        const select = content.querySelector('#add-med-select');
+        const qtyInput = content.querySelector('#add-med-qty');
+        const medId = parseInt(select.value, 10);
+        const qty = parseInt(qtyInput.value, 10) || 10;
+
+        const btn = content.querySelector('#confirm-add-med-btn');
+        btn.disabled = true;
+        btn.textContent = 'Adding…';
+
+        try {
+          await api.addMedicine(session.pharmacy_id, medId, qty);
+          backdrop.hidden = true;
+          toast.success('Medicine Added', 'New medicine added to your pharmacy inventory.');
+          // Refresh inventory
+          const newItems = await api.inventory(session.pharmacy_id);
+          state.set({ inventory: { items: newItems } });
+          renderStats(newItems);
+          renderInventory();
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = 'Add to My Inventory';
+          toast.error('Add failed', err.message);
+        }
+      });
+
+    } catch (err) {
+      content.innerHTML = `<p class="form-error">Failed to load catalog: ${utils.escape(err.message)}</p>`;
+    }
+  }
+
+  /* ----------------------------------------------------------
+     CHECKOUT & PLACE ORDER VIEW (Swiggy / Blinkit style)
+     ---------------------------------------------------------- */
+  function checkout() {
+    root.innerHTML = '';
+    const currentCart = cart.get();
+
+    const page = document.createElement('div');
+    page.className = 'checkout-page page';
+
+    if (!currentCart.items || currentCart.items.length === 0) {
+      page.innerHTML = `
+        <div class="empty-state card" style="max-width: 580px; margin: 40px auto; text-align: center; padding: 48px 24px;">
+          <div style="font-size: 56px; margin-bottom: 16px;">🛍️</div>
+          <h2 style="font-size: 22px; font-weight: 800; margin-bottom: 8px;">Your Medicine Cart is Empty</h2>
+          <p style="color: var(--clr-text-500); margin-bottom: 24px;">Search and add medicines from verified pharmacies near you to order with 15–20 min express delivery.</p>
+          <a href="#/" class="btn btn--primary" style="display: inline-flex; border-radius: var(--radius-full); padding: 10px 24px;">🔍 Search Nearby Medicines</a>
+        </div>
+      `;
+      root.append(page);
+      return;
+    }
+
+    const savedCustomer = JSON.parse(localStorage.getItem('medfind_customer_details') || '{}');
+    let deliveryMode = 'delivery'; // 'delivery' or 'pickup'
+    let selectedAddressType = 'Home';
+    let selectedPayment = 'upi';
+    let discountAmount = 20.0; // HEALTHY20 promo
+
+    page.innerHTML = `
+      <div class="checkout-layout">
+        <!-- Main Form Column -->
+        <div class="checkout-main">
+          <!-- Express Banner -->
+          <div class="express-banner card">
+            <div class="express-banner__icon">⚡</div>
+            <div class="express-banner__text">
+              <strong>Superfast Medicine Delivery in 15–20 Mins</strong>
+              <p>Dispensed from verified store: <strong>${utils.escape(currentCart.pharmacy_name)}</strong></p>
+            </div>
+            <span class="badge badge--green">Live Dispensing</span>
+          </div>
+
+          <!-- Step 1: Delivery Mode & Address -->
+          <div class="checkout-card card">
+            <div class="checkout-card__header">
+              <span class="step-circle">1</span>
+              <div>
+                <h2 class="checkout-card__title">Delivery Address &amp; Contact</h2>
+                <p class="checkout-card__desc">Choose doorstep delivery or counter pickup</p>
+              </div>
+            </div>
+
+            <!-- Delivery / Pickup Toggle -->
+            <div class="delivery-toggle-group" role="radiogroup" aria-label="Order fulfillment type">
+              <label class="delivery-toggle active" id="label-mode-delivery">
+                <input type="radio" name="checkout_delivery_type" value="delivery" checked />
+                <span class="delivery-toggle__icon">🛵</span>
+                <div>
+                  <strong>Doorstep Express Delivery</strong>
+                  <p>Delivery partner brings to your home in 15–20 mins</p>
+                </div>
+              </label>
+              <label class="delivery-toggle" id="label-mode-pickup">
+                <input type="radio" name="checkout_delivery_type" value="pickup" />
+                <span class="delivery-toggle__icon">🏥</span>
+                <div>
+                  <strong>Pharmacy Counter Pickup</strong>
+                  <p>Pick up yourself in 10 mins (Zero delivery fee)</p>
+                </div>
+              </label>
+            </div>
+
+            <!-- Address Form Fields -->
+            <div id="delivery-fields-wrapper" class="checkout-form-grid">
+              <div class="form-group full-width">
+                <label class="form-label">Address Tag</label>
+                <div class="address-type-chips">
+                  <button type="button" class="addr-chip active" data-type="Home">🏠 Home</button>
+                  <button type="button" class="addr-chip" data-type="Work">💼 Work</button>
+                  <button type="button" class="addr-chip" data-type="Other">📍 Other</button>
+                </div>
+              </div>
+
+              <div class="form-group full-width">
+                <label class="form-label" for="cust-address">Street / Flat / House Address *</label>
+                <input type="text" id="cust-address" class="input" placeholder="e.g. Flat 402, Royal Residency, Janpath, Bhubaneswar" value="${utils.escape(savedCustomer.address || '')}" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="cust-name">Patient / Recipient Name *</label>
+                <input type="text" id="cust-name" class="input" placeholder="Full name" value="${utils.escape(savedCustomer.name || '')}" required />
+              </div>
+
+              <div class="form-group">
+                <label class="form-label" for="cust-phone">Mobile Phone (for live delivery OTP) *</label>
+                <input type="tel" id="cust-phone" class="input" placeholder="e.g. 9876543210" value="${utils.escape(savedCustomer.phone || '')}" required />
+              </div>
+
+              <div class="form-group full-width">
+                <label class="form-label">Delivery Instructions (Optional)</label>
+                <div class="instruction-chips">
+                  <label class="inst-chip"><input type="checkbox" value="Leave at door" /> 🚪 Leave at door</label>
+                  <label class="inst-chip"><input type="checkbox" value="Ring bell" /> 🔔 Ring bell</label>
+                  <label class="inst-chip"><input type="checkbox" value="Avoid calling" /> 🔕 Avoid calling</label>
+                  <label class="inst-chip"><input type="checkbox" value="Elderly patient" /> 👵 Elderly patient</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pickup notice (hidden by default) -->
+            <div id="pickup-fields-wrapper" class="pickup-notice" style="display: none;">
+              <p>🏥 <strong>Counter Pickup Store:</strong> ${utils.escape(currentCart.pharmacy_name)}</p>
+              <p style="color: var(--clr-text-500); font-size: 13px; margin: 4px 0 8px;">${utils.escape(currentCart.pharmacy_address || 'Bhubaneswar, Odisha')}</p>
+              <div style="font-size: 13px; color: var(--clr-primary-dark); font-weight: 600;">
+                ⚡ Your medicines will be packed and held at the express counter for pickup with your Order Code.
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Medicine Items in Cart -->
+          <div class="checkout-card card">
+            <div class="checkout-card__header">
+              <span class="step-circle">2</span>
+              <div>
+                <h2 class="checkout-card__title">Medicines in Your Order</h2>
+                <p class="checkout-card__desc">Dispensed by ${utils.escape(currentCart.pharmacy_name)}</p>
+              </div>
+              <a href="#/" class="btn btn--ghost btn--sm" style="margin-left: auto;">+ Add More Medicines</a>
+            </div>
+
+            <div class="checkout-items-list" id="checkout-items-list"></div>
+
+            <div class="rx-note-box">
+              <div class="rx-note-box__icon">📋</div>
+              <div class="rx-note-box__text">
+                <strong>Prescription Verification at Handover</strong>
+                <p>For prescription medicines, please keep your doctor's prescription ready for the delivery partner or pharmacist.</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Payment Options -->
+          <div class="checkout-card card">
+            <div class="checkout-card__header">
+              <span class="step-circle">3</span>
+              <div>
+                <h2 class="checkout-card__title">Payment Method</h2>
+                <p class="checkout-card__desc">Encrypted &amp; secure healthcare checkout</p>
+              </div>
+            </div>
+
+            <div class="payment-options">
+              <label class="payment-option active" id="pay-opt-upi">
+                <input type="radio" name="checkout_payment" value="upi" checked />
+                <span class="payment-icon">📱</span>
+                <div style="flex: 1;">
+                  <strong>Instant UPI (Google Pay, PhonePe, Paytm, BHIM)</strong>
+                  <p>Instant confirmation • Zero transaction fee</p>
+                </div>
+                <span class="badge badge--green">Recommended</span>
+              </label>
+
+              <label class="payment-option" id="pay-opt-cod">
+                <input type="radio" name="checkout_payment" value="cod" />
+                <span class="payment-icon">💵</span>
+                <div style="flex: 1;">
+                  <strong>Cash on Delivery (Pay upon Arrival)</strong>
+                  <p>Pay cash or scan QR when delivery partner arrives at your door</p>
+                </div>
+              </label>
+
+              <label class="payment-option" id="pay-opt-card">
+                <input type="radio" name="checkout_payment" value="card" />
+                <span class="payment-icon">💳</span>
+                <div style="flex: 1;">
+                  <strong>Credit / Debit Card / Netbanking</strong>
+                  <p>Visa, MasterCard, RuPay &amp; all major bank netbanking</p>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sticky Bill Summary Column -->
+        <aside class="checkout-sidebar">
+          <div class="bill-card card">
+            <h2 class="bill-card__title">Bill Details</h2>
+
+            <div class="bill-row">
+              <span id="bill-items-label">Item Total</span>
+              <span id="bill-subtotal">₹0</span>
+            </div>
+
+            <div class="bill-row">
+              <span>Delivery Partner Fee</span>
+              <span id="bill-delivery">₹25</span>
+            </div>
+
+            <div class="bill-row">
+              <span>Sanitized Packaging &amp; Safety</span>
+              <span id="bill-packaging">₹4</span>
+            </div>
+
+            <div class="bill-row" id="bill-discount-row">
+              <span style="color: var(--clr-green); font-weight: 600;">Coupon: HEALTHY20</span>
+              <span id="bill-discount" style="color: var(--clr-green); font-weight: 700;">-₹20</span>
+            </div>
+
+            <div class="bill-divider"></div>
+
+            <div class="bill-row bill-row--total">
+              <strong>To Pay</strong>
+              <strong class="total-amount" id="bill-grand-total">₹0</strong>
+            </div>
+
+            <div class="savings-pill" id="bill-savings-pill">
+              🎉 You are saving ₹20 on this medicine order!
+            </div>
+
+            <button type="button" class="btn btn--primary btn--order" id="btn-place-order">
+              <span class="btn-order__total" id="btn-order-total">₹0</span>
+              <span class="btn-order__action">
+                Place Order
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+              </span>
+            </button>
+
+            <p class="bill-guarantee">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              100% genuine medicines from licensed pharmacies.
+            </p>
+          </div>
+        </aside>
+      </div>
+    `;
+
+    root.append(page);
+
+    // Helpers to recalculate and re-render bill and items
+    const itemsListEl = page.querySelector('#checkout-items-list');
+    const billItemsLabel = page.querySelector('#bill-items-label');
+    const billSubtotalEl = page.querySelector('#bill-subtotal');
+    const billDeliveryEl = page.querySelector('#bill-delivery');
+    const billPackagingEl = page.querySelector('#bill-packaging');
+    const billDiscountRow = page.querySelector('#bill-discount-row');
+    const billDiscountEl = page.querySelector('#bill-discount');
+    const billGrandTotalEl = page.querySelector('#bill-grand-total');
+    const btnOrderTotalEl = page.querySelector('#btn-order-total');
+    const btnPlaceOrder = page.querySelector('#btn-place-order');
+
+    function renderItems() {
+      const c = cart.get();
+      if (!c.items || c.items.length === 0) {
+        checkout();
+        return;
+      }
+
+      itemsListEl.innerHTML = '';
+      c.items.forEach(it => {
+        const row = document.createElement('div');
+        row.className = 'checkout-item-row';
+        row.innerHTML = `
+          <div class="checkout-item-row__info">
+            <span class="checkout-item-row__icon">💊</span>
+            <div>
+              <div class="checkout-item-row__name">${utils.escape(it.medicine)} ${utils.escape(it.strength)}</div>
+              <div class="checkout-item-row__form">${utils.escape(it.form)} • ₹${it.price} each</div>
+            </div>
+          </div>
+          <div class="checkout-item-row__stepper">
+            <button type="button" class="btn-item-minus" aria-label="Decrease">−</button>
+            <span class="item-qty">${it.quantity}</span>
+            <button type="button" class="btn-item-plus" aria-label="Increase">+</button>
+          </div>
+          <div class="checkout-item-row__price">₹${(it.price * it.quantity).toFixed(0)}</div>
+          <button type="button" class="checkout-item-row__remove" title="Remove item">×</button>
+        `;
+
+        row.querySelector('.btn-item-minus').addEventListener('click', () => {
+          cart.updateQty(it.medicine, it.strength, it.quantity - 1);
+          renderItems();
+        });
+        row.querySelector('.btn-item-plus').addEventListener('click', () => {
+          cart.updateQty(it.medicine, it.strength, it.quantity + 1);
+          renderItems();
+        });
+        row.querySelector('.checkout-item-row__remove').addEventListener('click', () => {
+          cart.removeItem(it.medicine, it.strength);
+          renderItems();
+        });
+
+        itemsListEl.appendChild(row);
+      });
+
+      updateBill();
+    }
+
+    function updateBill() {
+      const c = cart.get();
+      const subtotal = cart.getSubtotal();
+      const count = cart.getCount();
+
+      const deliveryFee = (subtotal >= 199 || deliveryMode === 'pickup') ? 0 : 25;
+      const packagingFee = deliveryMode === 'delivery' ? 4 : 0;
+      const discount = Math.min(subtotal, discountAmount);
+      const grandTotal = Math.max(0, subtotal + deliveryFee + packagingFee - discount);
+
+      billItemsLabel.textContent = `Item Total (${count} item${count > 1 ? 's' : ''})`;
+      billSubtotalEl.textContent = `₹${subtotal.toFixed(0)}`;
+      billDeliveryEl.innerHTML = deliveryFee === 0 ? '<span style="color:var(--clr-green); font-weight:700;">FREE</span>' : `₹${deliveryFee}`;
+      billPackagingEl.textContent = `₹${packagingFee}`;
+      billDiscountEl.textContent = `-₹${discount.toFixed(0)}`;
+      billGrandTotalEl.textContent = `₹${grandTotal.toFixed(0)}`;
+      btnOrderTotalEl.textContent = `₹${grandTotal.toFixed(0)}`;
+    }
+
+    // Toggle Delivery / Pickup
+    const labelDelivery = page.querySelector('#label-mode-delivery');
+    const labelPickup = page.querySelector('#label-mode-pickup');
+    const deliveryFields = page.querySelector('#delivery-fields-wrapper');
+    const pickupFields = page.querySelector('#pickup-fields-wrapper');
+
+    labelDelivery.addEventListener('click', () => {
+      deliveryMode = 'delivery';
+      labelDelivery.classList.add('active');
+      labelPickup.classList.remove('active');
+      deliveryFields.style.display = 'grid';
+      pickupFields.style.display = 'none';
+      updateBill();
+    });
+
+    labelPickup.addEventListener('click', () => {
+      deliveryMode = 'pickup';
+      labelPickup.classList.add('active');
+      labelDelivery.classList.remove('active');
+      deliveryFields.style.display = 'none';
+      pickupFields.style.display = 'block';
+      updateBill();
+    });
+
+    // Address Type Chips
+    page.querySelectorAll('.addr-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        page.querySelectorAll('.addr-chip').forEach(c => c.classList.remove('active'));
+        chip.classList.add('active');
+        selectedAddressType = chip.getAttribute('data-type');
+      });
+    });
+
+    // Payment method selection
+    page.querySelectorAll('.payment-option').forEach(opt => {
+      opt.addEventListener('click', () => {
+        page.querySelectorAll('.payment-option').forEach(o => o.classList.remove('active'));
+        opt.classList.add('active');
+        const rad = opt.querySelector('input[type="radio"]');
+        if (rad) {
+          rad.checked = true;
+          selectedPayment = rad.value;
+        }
+      });
+    });
+
+    // Place Order Action
+    btnPlaceOrder.addEventListener('click', async () => {
+      const c = cart.get();
+      if (!c.items || c.items.length === 0) return;
+
+      const custName = (page.querySelector('#cust-name').value || '').trim();
+      const custPhone = (page.querySelector('#cust-phone').value || '').trim();
+      const custAddress = (page.querySelector('#cust-address').value || '').trim();
+
+      if (deliveryMode === 'delivery') {
+        if (!custAddress) {
+          toast.warning('Address Required', 'Please enter your street / flat delivery address.');
+          page.querySelector('#cust-address').focus();
+          return;
+        }
+        if (!custPhone || custPhone.length < 7) {
+          toast.warning('Phone Required', 'Please enter a valid mobile number for OTP delivery.');
+          page.querySelector('#cust-phone').focus();
+          return;
+        }
+      }
+
+      const finalName = custName || 'Guest Patient';
+      const finalAddress = deliveryMode === 'delivery'
+        ? `[${selectedAddressType}] ${custAddress}`
+        : `Store Pickup at ${c.pharmacy_name}`;
+
+      localStorage.setItem('medfind_customer_details', JSON.stringify({
+        name: finalName,
+        phone: custPhone,
+        address: custAddress,
+      }));
+
+      btnPlaceOrder.disabled = true;
+      btnPlaceOrder.classList.add('btn--loading');
+
+      try {
+        const orderPayload = {
+          pharmacy_id: c.pharmacy_id,
+          pharmacy_name: c.pharmacy_name,
+          customer_name: finalName,
+          customer_phone: custPhone || '9876543210',
+          customer_address: finalAddress,
+          delivery_type: deliveryMode,
+          items: c.items,
+          discount: discountAmount,
+          payment_method: selectedPayment,
+        };
+
+        const result = await api.placeOrder(orderPayload);
+        userOrders.addCode(result.order_code);
+        cart.clear();
+
+        toast.success('Order Placed Successfully!', `Order ${result.order_code} dispatched to ${c.pharmacy_name}.`);
+        router.navigate(`#/track/${encodeURIComponent(result.order_code)}`);
+      } catch (err) {
+        btnPlaceOrder.disabled = false;
+        btnPlaceOrder.classList.remove('btn--loading');
+        toast.error('Order Failed', err.message || 'Unable to place order. Please try again.');
+      }
+    });
+
+    renderItems();
+  }
+
+  /* ----------------------------------------------------------
+     LIVE ORDER TRACKING VIEW (Swiggy / Blinkit style)
+     ---------------------------------------------------------- */
+  async function orderTracking(orderCode) {
+    root.innerHTML = '';
+    const page = document.createElement('div');
+    page.className = 'tracking-page page';
+
+    if (!orderCode) {
+      const saved = userOrders.getCodes();
+      if (saved.length > 0) {
+        orderCode = saved[0];
+      } else {
+        page.innerHTML = `
+          <div class="empty-state card" style="max-width: 500px; margin: 40px auto; text-align: center; padding: 48px 24px;">
+            <div style="font-size: 50px; margin-bottom: 12px;">🔍</div>
+            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 8px;">No Order Selected</h2>
+            <p style="color: var(--clr-text-500); margin-bottom: 20px;">You haven't placed or selected an order to track yet.</p>
+            <a href="#/orders" class="btn btn--primary">View My Orders</a>
+          </div>`;
+        root.append(page);
+        return;
+      }
+    }
+
+    page.innerHTML = `
+      <div class="card" style="max-width: 650px; margin: 40px auto; text-align: center; padding: 48px 20px;">
+        <div class="spinner" style="margin: 0 auto 16px;"></div>
+        <p style="color: var(--clr-text-700); font-weight: 600;">Fetching live delivery tracking for ${utils.escape(orderCode)}…</p>
+      </div>
+    `;
+    root.append(page);
+
+    let order = null;
+    try {
+      order = await api.getOrder(orderCode);
+    } catch (err) {
+      page.innerHTML = `
+        <div class="empty-state card" style="max-width: 520px; margin: 40px auto; text-align: center; padding: 40px 20px;">
+          <div style="font-size: 48px; margin-bottom: 12px;">⚠️</div>
+          <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 8px;">Order Not Found</h2>
+          <p style="color: var(--clr-text-500); margin-bottom: 20px;">Could not locate order "${utils.escape(orderCode)}".</p>
+          <a href="#/orders" class="btn btn--primary">Go to My Orders</a>
+        </div>`;
+      return;
+    }
+
+    function renderTrackingUI() {
+      const status = order.status || 'placed';
+
+      const statusTitles = {
+        placed: 'Order Placed! Pharmacy is preparing items 💊',
+        preparing: 'Pharmacy is packing your medicines 📦',
+        out_for_delivery: 'Out for Delivery! Rider on the way 🛵',
+        delivered: 'Order Delivered! Get well soon 🎉',
+        cancelled: 'Order has been cancelled ❌'
+      };
+
+      const etaBadgeText = {
+        placed: 'Arriving in ~20 mins',
+        preparing: 'Arriving in ~15 mins',
+        out_for_delivery: 'Arriving in ~8 mins',
+        delivered: 'Delivered',
+        cancelled: 'Cancelled'
+      };
+
+      const routeFillPct = {
+        placed: 25,
+        preparing: 45,
+        out_for_delivery: 75,
+        delivered: 100,
+        cancelled: 0
+      };
+
+      const riderPinPct = {
+        placed: 25,
+        preparing: 45,
+        out_for_delivery: 75,
+        delivered: 100,
+        cancelled: 0
+      };
+
+      const steps = [
+        { key: 'placed', label: 'Order Placed & Confirmed', desc: 'Pharmacy received your medicine request' },
+        { key: 'preparing', label: 'Medicines Packed & Checked', desc: 'Pharmacist verified batches & expiries' },
+        { key: 'out_for_delivery', label: 'Delivery Partner On the Way', desc: `${order.rider_name || 'Ramesh Kumar'} picked up package` },
+        { key: 'delivered', label: 'Delivered to Doorstep', desc: 'Package handed over safely with OTP' },
+      ];
+
+      const stepKeys = ['placed', 'preparing', 'out_for_delivery', 'delivered'];
+      const currentIdx = stepKeys.indexOf(status);
+
+      const stepsHtml = steps.map((s, idx) => {
+        let cls = '';
+        if (currentIdx > idx || status === 'delivered') cls = 'completed';
+        else if (currentIdx === idx) cls = 'current';
+
+        return `
+          <div class="stepper-step ${cls}">
+            <div class="stepper-step__marker">${currentIdx > idx || status === 'delivered' ? '✓' : idx + 1}</div>
+            <div class="stepper-step__content">
+              <strong>${s.label}</strong>
+              <p>${s.desc}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      const itemsHtml = (order.items || []).map(it => `
+        <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px;">
+          <span>${it.quantity}x ${utils.escape(it.medicine_name || it.medicine)} (${utils.escape(it.strength || '')})</span>
+          <strong>₹${it.line_total || (it.price * it.quantity)}</strong>
+        </div>
+      `).join('');
+
+      page.innerHTML = `
+        <!-- Teacher Demo Simulator Toolbar -->
+        <div class="demo-controls-bar">
+          <span class="demo-badge">🎓 Teacher/Examiner Simulator:</span>
+          <button type="button" class="btn btn--sm btn--primary" id="btn-demo-advance">
+            ⏩ Advance to Next Stage
+          </button>
+          <button type="button" class="btn btn--sm btn--secondary" id="btn-demo-reset">
+            🔄 Reset to Placed
+          </button>
+          <span style="font-size: 12px; color: var(--clr-text-500); margin-left: auto;">
+            Current Status: <strong>${status.toUpperCase()}</strong>
+          </span>
+        </div>
+
+        <!-- Hero Header -->
+        <div class="tracking-hero">
+          <div>
+            <div class="tracking-eta-pill">
+              <span class="pulse-dot"></span>
+              <span>${etaBadgeText[status] || 'Live Delivery'}</span>
+            </div>
+            <h1 class="tracking-hero__title">${statusTitles[status] || 'Medicine Delivery in Progress'}</h1>
+            <p class="tracking-hero__sub">Order Code: <strong>${utils.escape(order.order_code)}</strong> • From ${utils.escape(order.pharmacy_name)}</p>
+          </div>
+          <button class="btn btn--white btn--sm" id="btn-refresh-tracking" style="font-weight: 700;">
+            🔄 Refresh Status
+          </button>
+        </div>
+
+        <!-- Delivery OTP Banner -->
+        <div class="otp-banner">
+          <div class="otp-banner__text">
+            <strong>Delivery Verification OTP</strong>
+            <p>Share this 4-digit security code with the delivery rider upon arrival</p>
+          </div>
+          <div class="otp-box">${utils.escape(order.delivery_otp || '4821')}</div>
+        </div>
+
+        <!-- Animated Delivery Route Simulation -->
+        <div class="route-map-card card">
+          <h2 style="font-size: 15px; font-weight: 800; margin: 0 0 10px; color: var(--clr-text-900);">Live Delivery Route</h2>
+          <div class="route-simulation">
+            <div class="route-node">
+              <div class="route-node__icon">🏥</div>
+              <strong>${utils.escape(order.pharmacy_name)}</strong>
+            </div>
+
+            <div class="route-line">
+              <div class="route-line__fill" style="width: ${routeFillPct[status]}%;"></div>
+              <div class="rider-avatar-pin" style="left: ${riderPinPct[status]}%;">🛵</div>
+            </div>
+
+            <div class="route-node">
+              <div class="route-node__icon">🏠</div>
+              <strong>Your Doorstep</strong>
+            </div>
+          </div>
+          <p style="text-align: center; font-size: 12px; color: var(--clr-text-500); margin: 6px 0 0;">
+            ${order.delivery_type === 'pickup' ? '🏥 Store Counter Pickup Mode' : `Delivering to: ${utils.escape(order.customer_address)}`}
+          </p>
+        </div>
+
+        <!-- Stepper Pipeline -->
+        <div class="stepper-card card">
+          <h2 style="font-size: 16px; font-weight: 800; margin: 0 0 20px; color: var(--clr-text-900);">Order Progress</h2>
+          <div class="stepper-track">
+            ${stepsHtml}
+          </div>
+        </div>
+
+        <!-- Delivery Partner Profile Card -->
+        <div class="rider-card card">
+          <div class="rider-info">
+            <div class="rider-avatar">🛵</div>
+            <div>
+              <div class="rider-name">${utils.escape(order.rider_name || 'Ramesh Kumar')}</div>
+              <div class="rider-rating">★ 4.9 • Superfast Delivery Partner • 1,240+ deliveries</div>
+            </div>
+          </div>
+          <div class="rider-actions">
+            <a href="tel:${order.rider_phone || '+919876543210'}" class="btn btn--secondary btn--sm">
+              📞 Call Partner
+            </a>
+            <a href="https://wa.me/919876543210?text=Hi, regarding my medicine delivery order ${encodeURIComponent(order.order_code)}" target="_blank" class="btn btn--ghost btn--sm">
+              💬 WhatsApp
+            </a>
+          </div>
+        </div>
+
+        <!-- Order Summary & Printable Receipt Accordion -->
+        <div class="card printable-invoice" style="padding: 24px; border-radius: var(--radius-lg);">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--clr-border); padding-bottom: 14px; margin-bottom: 14px;">
+            <div>
+              <h2 style="font-size: 16px; font-weight: 800; margin: 0; color: var(--clr-text-900);">Medical Invoice &amp; Order Summary</h2>
+              <p style="font-size: 12px; color: var(--clr-text-500); margin: 2px 0 0;">Receipt #${utils.escape(order.order_code)} • Placed at ${order.created_at}</p>
+            </div>
+            <button type="button" class="btn btn--secondary btn--sm" id="btn-print-receipt">
+              🖨️ Print Receipt
+            </button>
+          </div>
+
+          <div style="margin-bottom: 16px;">
+            ${itemsHtml}
+          </div>
+
+          <div style="border-top: 1px dashed var(--clr-border); padding-top: 12px;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--clr-text-500); margin-bottom: 4px;">
+              <span>Subtotal:</span> <span>₹${order.subtotal}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--clr-text-500); margin-bottom: 4px;">
+              <span>Delivery Partner Fee:</span> <span>${order.delivery_fee === 0 ? 'FREE' : '₹' + order.delivery_fee}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 13px; color: var(--clr-green); font-weight: 600; margin-bottom: 8px;">
+              <span>Discount (HEALTHY20):</span> <span>-₹${order.discount}</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 16px; font-weight: 800; color: var(--clr-text-900);">
+              <span>Total Paid:</span> <span style="color: var(--clr-primary-dark);">₹${order.total_amount}</span>
+            </div>
+          </div>
+
+          <div style="margin-top: 18px; display: flex; gap: 10px;">
+            <a href="#/orders" class="btn btn--secondary btn--sm">View All Orders</a>
+            <a href="#/" class="btn btn--primary btn--sm">Order More Medicines</a>
+          </div>
+        </div>
+      `;
+
+      // Wire simulator advance button
+      page.querySelector('#btn-demo-advance')?.addEventListener('click', async () => {
+        const nextMap = {
+          placed: 'preparing',
+          preparing: 'out_for_delivery',
+          out_for_delivery: 'delivered',
+          delivered: 'placed',
+          cancelled: 'placed'
+        };
+        const nextStatus = nextMap[order.status] || 'preparing';
+        try {
+          await api.updateOrderStatus(order.order_code, nextStatus);
+          order.status = nextStatus;
+          toast.success('Status Updated', `Order transitioned to ${nextStatus.replace(/_/g, ' ')}!`);
+          renderTrackingUI();
+        } catch (err) {
+          toast.error('Update failed', err.message);
+        }
+      });
+
+      // Wire simulator reset button
+      page.querySelector('#btn-demo-reset')?.addEventListener('click', async () => {
+        try {
+          await api.updateOrderStatus(order.order_code, 'placed');
+          order.status = 'placed';
+          toast.info('Status Reset', 'Order reset back to Placed stage.');
+          renderTrackingUI();
+        } catch (err) {
+          toast.error('Reset failed', err.message);
+        }
+      });
+
+      // Wire refresh
+      page.querySelector('#btn-refresh-tracking')?.addEventListener('click', async () => {
+        try {
+          order = await api.getOrder(order.order_code);
+          toast.info('Status Refreshed', 'Latest order updates loaded.');
+          renderTrackingUI();
+        } catch (err) {
+          toast.error('Refresh failed', err.message);
+        }
+      });
+
+      // Wire print receipt
+      page.querySelector('#btn-print-receipt')?.addEventListener('click', () => {
+        window.print();
+      });
+    }
+
+    renderTrackingUI();
+  }
+
+  /* ----------------------------------------------------------
+     MY ORDERS VIEW (Swiggy / Blinkit style)
+     ---------------------------------------------------------- */
+  async function orders() {
+    root.innerHTML = '';
+    const page = document.createElement('div');
+    page.className = 'orders-page page';
+
+    page.innerHTML = `
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+        <div>
+          <h1 style="font-size: 24px; font-weight: 800; color: var(--clr-text-900); margin: 0;">My Medicine Orders</h1>
+          <p style="color: var(--clr-text-500); font-size: 14px; margin: 4px 0 0;">View live delivery progress, past prescriptions, and invoices</p>
+        </div>
+        <a href="#/" class="btn btn--primary btn--sm">+ Order New Medicines</a>
+      </div>
+      <div id="orders-content-area">
+        <div class="card" style="padding: 40px; text-align: center;">
+          <div class="spinner" style="margin: 0 auto 12px;"></div>
+          <p>Loading your orders…</p>
+        </div>
+      </div>
+    `;
+
+    root.append(page);
+    const contentArea = page.querySelector('#orders-content-area');
+
+    try {
+      const allOrders = await api.listOrders();
+      const userCodes = userOrders.getCodes();
+
+      let displayOrders = allOrders;
+      if (userCodes.length > 0) {
+        displayOrders = allOrders.filter(o => userCodes.includes(o.order_code));
+        if (displayOrders.length === 0) displayOrders = allOrders;
+      }
+
+      if (displayOrders.length === 0) {
+        contentArea.innerHTML = `
+          <div class="empty-state card" style="text-align: center; padding: 48px 20px;">
+            <div style="font-size: 48px; margin-bottom: 12px;">🛍️</div>
+            <h2 style="font-size: 20px; font-weight: 800; margin-bottom: 8px;">No Orders Yet</h2>
+            <p style="color: var(--clr-text-500); margin-bottom: 20px;">You haven't placed any medicine orders. Search for medicines near you to get started.</p>
+            <a href="#/" class="btn btn--primary">Find Medicines Nearby</a>
+          </div>
+        `;
+        return;
+      }
+
+      const statusColors = {
+        placed: 'badge--primary',
+        preparing: 'badge--amber',
+        out_for_delivery: 'badge--green',
+        delivered: 'badge--green',
+        cancelled: 'badge--red'
+      };
+
+      contentArea.innerHTML = `
+        <div class="orders-list">
+          ${displayOrders.map(o => {
+            const itemsSummary = (o.items || []).map(i => `${i.quantity}x ${utils.escape(i.medicine_name || i.medicine)}`).join(', ');
+            return `
+              <div class="order-card card">
+                <div class="order-card__header">
+                  <div>
+                    <span class="order-card__code">${utils.escape(o.order_code)}</span>
+                    <span class="badge ${statusColors[o.status] || 'badge--muted'}" style="margin-left: 8px;">
+                      ● ${o.status.replace(/_/g, ' ').toUpperCase()}
+                    </span>
+                  </div>
+                  <div class="order-card__meta">
+                    Placed at ${o.created_at} • OTP: <strong>${utils.escape(o.delivery_otp || '4821')}</strong>
+                  </div>
+                </div>
+
+                <div style="font-size: 14px; margin-bottom: 10px; color: var(--clr-text-700);">
+                  🏥 Dispensed from <strong>${utils.escape(o.pharmacy_name)}</strong>
+                </div>
+
+                <div class="order-card__items">
+                  <div class="order-card__item">💊 ${itemsSummary}</div>
+                  <div style="font-size: 12px; color: var(--clr-text-500);">📍 ${utils.escape(o.customer_address)}</div>
+                </div>
+
+                <div class="order-card__footer">
+                  <div class="order-card__total">
+                    Total: ₹${o.total_amount} <span style="font-size: 12px; font-weight: normal; color: var(--clr-text-500);">(${o.payment_method.toUpperCase()})</span>
+                  </div>
+                  <div style="display: flex; gap: 8px;">
+                    <a href="#/track/${encodeURIComponent(o.order_code)}" class="btn btn--primary btn--sm">
+                      Track Live Order ➔
+                    </a>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    } catch (err) {
+      contentArea.innerHTML = `<p class="form-error">Failed to load orders: ${utils.escape(err.message)}</p>`;
+    }
+  }
+
   /* ----------------------------------------------------------
      404 VIEW
      ---------------------------------------------------------- */
@@ -1476,7 +3184,7 @@ const views = (() => {
       </div>`;
   }
 
-  return { home, login, dashboard, notFound, applyFilters };
+  return { home, login, dashboard, checkout, orderTracking, orders, notFound, applyFilters };
 })();
 
 
@@ -1535,7 +3243,6 @@ const router = (() => {
 
   function resolve() {
     const hash = window.location.hash || '#/';
-    const routeName = routes[hash];
 
     // Close mobile menu
     const mobileMenu = document.getElementById('mobile-menu');
@@ -1543,12 +3250,31 @@ const router = (() => {
     const hamburger = document.getElementById('hamburger-btn');
     if (hamburger) hamburger.setAttribute('aria-expanded', 'false');
 
-    nav.setActiveLink(routeName || '');
+    cart.updateUI();
 
-    if (routeName === 'home')      views.home();
-    else if (routeName === 'login')     views.login();
-    else if (routeName === 'dashboard') views.dashboard();
-    else views.notFound();
+    if (hash === '#/' || hash === '') {
+      nav.setActiveLink('home');
+      views.home();
+    } else if (hash === '#/checkout') {
+      nav.setActiveLink('orders');
+      views.checkout();
+    } else if (hash.startsWith('#/track')) {
+      nav.setActiveLink('orders');
+      const parts = hash.split('/');
+      const code = parts[2] ? decodeURIComponent(parts[2]) : '';
+      views.orderTracking(code);
+    } else if (hash === '#/orders') {
+      nav.setActiveLink('orders');
+      views.orders();
+    } else if (hash === '#/login') {
+      nav.setActiveLink('login');
+      views.login();
+    } else if (hash === '#/dashboard') {
+      nav.setActiveLink('dashboard');
+      views.dashboard();
+    } else {
+      views.notFound();
+    }
   }
 
   function navigate(hash) {
@@ -1633,6 +3359,11 @@ async function boot() {
   initHamburger();
   initLogout();
 
+  // Floating Cart Bar Checkout button listener
+  document.getElementById('cart-pill-checkout-btn')?.addEventListener('click', () => {
+    router.navigate('#/checkout');
+  });
+
   // Restore session
   try {
     const sess = await api.session();
@@ -1642,8 +3373,17 @@ async function boot() {
     }
   } catch (_) { /* session check failing is non-fatal */ }
 
+  // Initial cart UI & orders badge
+  cart.updateUI();
+  userOrders.updateBadge();
+
   // Initial route
   router.resolve();
+
+  // Expose modal and router for widget integrations (e.g., MedBot assistant)
+  window.medfindModal = modal;
+  window.medfindRouter = router;
+  window.medfindCart = cart;
 }
 
 document.addEventListener('DOMContentLoaded', boot);
