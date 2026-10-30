@@ -30,12 +30,18 @@ def init_db(conn):
 
 
 PHARMACIES = [
-    ("MedPlus Pharmacy",    "Janpath, Bhubaneswar, Odisha",         20.2962, 85.8245, "demo123"),
-    ("Apollo Pharmacy",     "Saheed Nagar, Bhubaneswar, Odisha",    20.2895, 85.8370, "demo123"),
-    ("LifeCare Pharmacy",   "Kharvel Nagar, Bhubaneswar, Odisha",   20.2780, 85.8290, "demo123"),
-    ("Sunrise Medical",     "Unit-4, Bhubaneswar, Odisha",          20.2610, 85.8180, "demo123"),
-    ("City Chemist",        "Nayapalli, Bhubaneswar, Odisha",       20.2945, 85.8012, "demo123"),
-    ("Wellness Pharmacy",   "Patia, Bhubaneswar, Odisha",           20.3491, 85.8194, "demo123"),
+    ("MedPlus Pharmacy — Master Canteen",    "Janpath, Master Canteen Square, Bhubaneswar, Odisha",            20.2680, 85.8400, "demo123"),
+    ("Apollo Pharmacy — Saheed Nagar",       "Near BMC Bhawani Mall, Saheed Nagar, Bhubaneswar, Odisha",       20.2895, 85.8370, "demo123"),
+    ("LifeCare Pharmacy — Kharvel Nagar",    "Near Ram Mandir, Kharvel Nagar, Bhubaneswar, Odisha",            20.2780, 85.8290, "demo123"),
+    ("Sunrise Medical & Chemist",            "Unit-4, Near Capital Hospital, Bhubaneswar, Odisha",             20.2610, 85.8180, "demo123"),
+    ("City Chemist & Druggist",              "Near ISKCON Temple, Nayapalli, Bhubaneswar, Odisha",             20.2945, 85.8012, "demo123"),
+    ("Wellness Pharmacy — KIIT Campus",      "Infocity Road, Patia, Bhubaneswar, Odisha",                      20.3540, 85.8175, "demo123"),
+    ("Kalinga Medicos — Jayadev Vihar",      "Near Pal Heights, Jayadev Vihar, Bhubaneswar, Odisha",           20.3015, 85.8185, "demo123"),
+    ("Damana Health Chemist",                "Damana Square, Chandrasekharpur, Bhubaneswar, Odisha",           20.3250, 85.8190, "demo123"),
+    ("AIIMS Care Pharmacy",                  "Sijua, Near AIIMS Hospital, Bhubaneswar, Odisha",                20.2310, 85.7750, "demo123"),
+    ("SUM Hospital Medical Store",           "Kalinga Nagar, Near SUM Hospital, Ghatikia, Bhubaneswar, Odisha", 20.2785, 85.7620, "demo123"),
+    ("Khandagiri Express Pharmacy",          "Near Khandagiri Caves, Baramunda, Bhubaneswar, Odisha",          20.2580, 85.7860, "demo123"),
+    ("Esplanade Care Pharmacy",              "Cuttack Road, Near Esplanade One Mall, Rasulgarh, Bhubaneswar",  20.2910, 85.8640, "demo123"),
 ]
 
 MEDICINES = [

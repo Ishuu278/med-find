@@ -110,12 +110,27 @@ const api = (() => {
   }
 
   const MOCK_PHARMACIES = [
-    { id: 1, name: "MedPlus Pharmacy", address: "Janpath, Bhubaneswar, Odisha", lat: 20.2962, lon: 85.8245, is_open: 1, phone: "+91 98765 43210" },
-    { id: 2, name: "Apollo Pharmacy", address: "Saheed Nagar, Bhubaneswar, Odisha", lat: 20.2895, lon: 85.8370, is_open: 1, phone: "+91 98765 43211" },
-    { id: 3, name: "LifeCare Pharmacy", address: "Kharvel Nagar, Bhubaneswar, Odisha", lat: 20.2780, lon: 85.8290, is_open: 1, phone: "+91 98765 43212" },
-    { id: 4, name: "Sunrise Medical", address: "Unit-4, Bhubaneswar, Odisha", lat: 20.2610, lon: 85.8180, is_open: 1, phone: "+91 98765 43213" },
-    { id: 5, name: "City Chemist", address: "Nayapalli, Bhubaneswar, Odisha", lat: 20.2945, lon: 85.8012, is_open: 0, phone: "+91 98765 43214" },
-    { id: 6, name: "Wellness Pharmacy", address: "Patia, Bhubaneswar, Odisha", lat: 20.3491, lon: 85.8194, is_open: 1, phone: "+91 98765 43215" },
+    { id: 1,  name: "MedPlus Pharmacy — Master Canteen",    address: "Janpath, Master Canteen Square, Bhubaneswar, Odisha",            lat: 20.2680, lon: 85.8400, is_open: 1, phone: "+91 98765 43210" },
+    { id: 2,  name: "Apollo Pharmacy — Saheed Nagar",       address: "Near BMC Bhawani Mall, Saheed Nagar, Bhubaneswar, Odisha",       lat: 20.2895, lon: 85.8370, is_open: 1, phone: "+91 98765 43211" },
+    { id: 3,  name: "LifeCare Pharmacy — Kharvel Nagar",    address: "Near Ram Mandir, Kharvel Nagar, Bhubaneswar, Odisha",            lat: 20.2780, lon: 85.8290, is_open: 1, phone: "+91 98765 43212" },
+    { id: 4,  name: "Sunrise Medical & Chemist",            address: "Unit-4, Near Capital Hospital, Bhubaneswar, Odisha",             lat: 20.2610, lon: 85.8180, is_open: 1, phone: "+91 98765 43213" },
+    { id: 5,  name: "City Chemist & Druggist",              address: "Near ISKCON Temple, Nayapalli, Bhubaneswar, Odisha",             lat: 20.2945, lon: 85.8012, is_open: 0, phone: "+91 98765 43214" },
+    { id: 6,  name: "Wellness Pharmacy — KIIT Campus",      address: "Infocity Road, Patia, Bhubaneswar, Odisha",                      lat: 20.3540, lon: 85.8175, is_open: 1, phone: "+91 98765 43215" },
+    { id: 7,  name: "Kalinga Medicos — Jayadev Vihar",      address: "Near Pal Heights, Jayadev Vihar, Bhubaneswar, Odisha",           lat: 20.3015, lon: 85.8185, is_open: 1, phone: "+91 98765 43216" },
+    { id: 8,  name: "Damana Health Chemist",                address: "Damana Square, Chandrasekharpur, Bhubaneswar, Odisha",           lat: 20.3250, lon: 85.8190, is_open: 1, phone: "+91 98765 43217" },
+    { id: 9,  name: "AIIMS Care Pharmacy",                  address: "Sijua, Near AIIMS Hospital, Bhubaneswar, Odisha",                lat: 20.2310, lon: 85.7750, is_open: 1, phone: "+91 98765 43218" },
+    { id: 10, name: "SUM Hospital Medical Store",           address: "Kalinga Nagar, Near SUM Hospital, Ghatikia, Bhubaneswar, Odisha", lat: 20.2785, lon: 85.7620, is_open: 1, phone: "+91 98765 43219" },
+    { id: 11, name: "Khandagiri Express Pharmacy",          address: "Near Khandagiri Caves, Baramunda, Bhubaneswar, Odisha",          lat: 20.2580, lon: 85.7860, is_open: 1, phone: "+91 98765 43220" },
+    { id: 12, name: "Esplanade Care Pharmacy",              address: "Cuttack Road, Near Esplanade One Mall, Rasulgarh, Bhubaneswar",  lat: 20.2910, lon: 85.8640, is_open: 1, phone: "+91 98765 43221" },
+  ];
+
+  const BBSR_NEIGHBORHOODS = [
+    { name: "All BBSR",           label: "📍 All Bhubaneswar",        lat: 20.2961, lon: 85.8245, zoom: 12 },
+    { name: "Patia / KIIT",       label: "🎓 Patia & KIIT",            lat: 20.3540, lon: 85.8175, zoom: 14 },
+    { name: "Saheed Nagar",       label: "🛍️ Saheed Nagar / Rasulgarh", lat: 20.2895, lon: 85.8450, zoom: 14 },
+    { name: "AIIMS / SUM",        label: "🏥 AIIMS & SUM Hospital",    lat: 20.2550, lon: 85.7680, zoom: 14 },
+    { name: "Jayadev Vihar",      label: "🏛️ Jayadev Vihar / Nayapalli", lat: 20.2980, lon: 85.8100, zoom: 14 },
+    { name: "Janpath",            label: "🚂 Janpath / Master Canteen", lat: 20.2680, lon: 85.8400, zoom: 14 },
   ];
 
   const MOCK_MEDICINES = [
@@ -764,6 +779,10 @@ const components = (() => {
         </div>
       </div>
       <div class="map-toolbar-right">
+        <select class="form-input map-bbsr-select" id="${mapId}-bbsr-hub-select" style="padding:4px 8px;font-size:12px;height:32px;width:auto;border-radius:var(--radius-md);background:var(--clr-surface);border:1px solid var(--clr-border);color:var(--clr-text-700);cursor:pointer;" title="Jump to Bhubaneswar Hub">
+          <option value="">Jump to BBSR Hub…</option>
+          ${BBSR_NEIGHBORHOODS.map(nh => `<option value="${nh.lat},${nh.lon},${nh.zoom}">${nh.label}</option>`).join('')}
+        </select>
         <button type="button" class="map-recenter-btn" id="${mapId}-recenter" title="Recenter on your location">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
           My Location
@@ -967,6 +986,16 @@ const components = (() => {
           chip.classList.add('active');
           renderMarkers(chip.dataset.mapFilter);
         });
+      });
+    }
+
+    // BBSR Hub select listener
+    const hubSelect = document.getElementById(`${mapId}-bbsr-hub-select`);
+    if (hubSelect) {
+      hubSelect.addEventListener('change', () => {
+        if (!hubSelect.value) return;
+        const [hLat, hLon, hZoom] = hubSelect.value.split(',').map(Number);
+        map.flyTo([hLat, hLon], hZoom || 14, { duration: 1.2 });
       });
     }
 
@@ -3490,11 +3519,18 @@ const views = (() => {
           <div class="search-bar__icon" aria-hidden="true">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </div>
-          <input type="search" id="map-search-input" class="search-bar__input" placeholder="Search medicine on map (e.g. Dolo 650)…" value="${utils.escape(state.get().search.query)}" autocomplete="off" />
+          <input type="search" id="map-search-input" class="search-bar__input" placeholder="Search medicine (e.g. Dolo 650) or area (e.g. Patia, Saheed Nagar)…" value="${utils.escape(state.get().search.query)}" autocomplete="off" />
           <button type="submit" class="search-bar__btn" aria-label="Search">
             <span class="btn-label">Search</span>
           </button>
         </form>
+        <div class="bbsr-hubs-chips" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+          ${BBSR_NEIGHBORHOODS.map(nh => `
+            <button type="button" class="chip bbsr-hub-btn" data-lat="${nh.lat}" data-lon="${nh.lon}" data-zoom="${nh.zoom}" style="font-size:12px;padding:5px 10px;">
+              ${nh.label}
+            </button>
+          `).join('')}
+        </div>
       </div>
     `;
 
@@ -3504,6 +3540,19 @@ const views = (() => {
 
     container.append(hero, mapHost);
     root.append(container);
+
+    // Bind BBSR Hub chip buttons
+    container.querySelectorAll('.bbsr-hub-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const hLat = parseFloat(btn.dataset.lat);
+        const hLon = parseFloat(btn.dataset.lon);
+        const hZoom = parseInt(btn.dataset.zoom, 10) || 14;
+        const activeMap = components._activeLeafletMaps['fullscreen-live-map'];
+        if (activeMap) {
+          activeMap.flyTo([hLat, hLon], hZoom, { duration: 1.2 });
+        }
+      });
+    });
 
     const { lat, lon } = state.get().location;
     const currentQ = state.get().search.query;
@@ -3538,7 +3587,25 @@ const views = (() => {
     const input = document.getElementById('map-search-input');
     form?.addEventListener('submit', (e) => {
       e.preventDefault();
-      const q = input?.value.trim() || '';
+      const q = (input?.value || '').trim();
+      if (!q) {
+        loadData('');
+        return;
+      }
+
+      // Check if search query matches a Bhubaneswar area
+      const matchedArea = BBSR_NEIGHBORHOODS.find(nh =>
+        nh.name.toLowerCase().includes(q.toLowerCase()) || q.toLowerCase().includes(nh.name.toLowerCase())
+      );
+      if (matchedArea) {
+        const activeMap = components._activeLeafletMaps['fullscreen-live-map'];
+        if (activeMap) {
+          activeMap.flyTo([matchedArea.lat, matchedArea.lon], matchedArea.zoom, { duration: 1.2 });
+          toast.info('Bhubaneswar Hub', `Centered map on ${matchedArea.label}`);
+          return;
+        }
+      }
+
       state.set({ search: { query: q } });
       loadData(q);
     });
