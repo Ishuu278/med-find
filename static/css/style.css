@@ -3956,3 +3956,13 @@ input[type=number] { -moz-appearance: textfield; appearance: textfield; }
     justify-content: space-between;
   }
 }
+
+/* OpenStreetMap Dark Mode Tile Support */
+[data-theme="dark"] .live-map-element .leaflet-tile {
+  filter: brightness(0.7) invert(1) contrast(3) hue-rotate(200deg) saturate(0.35) brightness(0.85);
+}
+
+[data-theme="dark"] .live-map-element .leaflet-container {
+  background: #0f172a !important;
+}
+
