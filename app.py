@@ -278,6 +278,8 @@ def api_search():
             "pharmacy_id": row["pharmacy_id"],
             "pharmacy": row["pharmacy"],
             "address": row["address"],
+            "latitude": row["latitude"],
+            "longitude": row["longitude"],
             "medicine_id": row["medicine_id"],
             "medicine": row["medicine"],
             "strength": row["strength"],
@@ -293,6 +295,34 @@ def api_search():
         })
 
     results.sort(key=lambda x: x["score"], reverse=True)
+    return jsonify(results)
+
+
+@app.route("/api/pharmacies")
+def api_pharmacies():
+    try:
+        lat = float(request.args.get("lat", DEFAULT_LAT))
+        lon = float(request.args.get("lon", DEFAULT_LON))
+    except (ValueError, TypeError):
+        lat, lon = DEFAULT_LAT, DEFAULT_LON
+
+    db = get_db()
+    rows = db.execute("SELECT id, name, address, latitude, longitude, is_open FROM pharmacies").fetchall()
+    results = []
+    for r in rows:
+        dist = haversine(lat, lon, r["latitude"], r["longitude"])
+        results.append({
+            "id": r["id"],
+            "pharmacy_id": r["id"],
+            "name": r["name"],
+            "pharmacy": r["name"],
+            "address": r["address"],
+            "latitude": r["latitude"],
+            "longitude": r["longitude"],
+            "is_open": bool(r["is_open"]),
+            "distance_km": dist
+        })
+    results.sort(key=lambda x: x["distance_km"])
     return jsonify(results)
 
 

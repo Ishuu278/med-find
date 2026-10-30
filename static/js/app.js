@@ -252,6 +252,23 @@ const api = (() => {
     listOrders: (phone) => get(`/api/orders${phone ? '?phone=' + encodeURIComponent(phone) : ''}`),
     pharmacyOrders: (id) => get(`/api/pharmacy/${id}/orders`),
     updatePharmacyOrderStatus: (pharmacyId, orderId, status) => post(`/api/pharmacy/${pharmacyId}/orders/${orderId}/status`, { status }),
+    pharmacies: async (lat, lon) => {
+      try {
+        return await get(`/api/pharmacies?lat=${lat}&lon=${lon}`);
+      } catch (err) {
+        return MOCK_PHARMACIES.map(p => ({
+          id: p.id,
+          pharmacy_id: p.id,
+          name: p.name,
+          pharmacy: p.name,
+          address: p.address,
+          latitude: p.lat,
+          longitude: p.lon,
+          is_open: p.is_open,
+          distance_km: calcHaversine(lat, lon, p.lat, p.lon)
+        }));
+      }
+    },
   };
 })();
 
@@ -265,6 +282,7 @@ const state = (() => {
     location:   { lat: 20.2961, lon: 85.8245, isDefault: true },
     search:     { query: '', results: [], filtered: [], status: 'idle' }, // idle | loading | done | error
     filters:    { openOnly: false, hideOutOfStock: false, sort: 'score' },
+    viewMode:   'list', // 'list' | 'map'
     inventory:  { items: [], status: 'idle', filter: '', staleOnly: false },
   };
 
@@ -715,7 +733,248 @@ const components = (() => {
     return card;
   }
 
-  return { availBadge, openBadge, freshnessItem, scoreRing, skeletonCard, resultCard };
+  const _activeLeafletMaps = {};
+
+  /* ---- Interactive Live Map Component ---- */
+  function liveMap(items, options = {}) {
+    const mapId = options.id || `live-map-${Date.now()}`;
+    const medicineQuery = options.medicine || '';
+    const userLoc = state.get().location;
+    const userLat = userLoc.lat || 20.2961;
+    const userLon = userLoc.lon || 85.8245;
+
+    const card = document.createElement('div');
+    card.className = 'live-map-card';
+
+    // Toolbar
+    const toolbar = document.createElement('div');
+    toolbar.className = 'live-map-toolbar';
+    toolbar.innerHTML = `
+      <div class="map-toolbar-left">
+        <div class="map-legend">
+          <span class="legend-item"><span class="legend-dot legend-dot--green"></span> In Stock / Open</span>
+          <span class="legend-item"><span class="legend-dot legend-dot--amber"></span> Low Stock</span>
+          <span class="legend-item"><span class="legend-dot legend-dot--red"></span> Out of Stock</span>
+          <span class="legend-item"><span class="legend-dot legend-dot--blue"></span> You</span>
+        </div>
+        <div style="display:inline-flex;gap:4px;margin-left:6px;">
+          <button type="button" class="map-filter-chip active" data-map-filter="all">All (${items.length})</button>
+          <button type="button" class="map-filter-chip" data-map-filter="open">Open Now</button>
+          ${medicineQuery ? '<button type="button" class="map-filter-chip" data-map-filter="instock">In Stock</button>' : ''}
+        </div>
+      </div>
+      <div class="map-toolbar-right">
+        <button type="button" class="map-recenter-btn" id="${mapId}-recenter" title="Recenter on your location">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+          My Location
+        </button>
+      </div>
+    `;
+
+    // Map container element
+    const mapEl = document.createElement('div');
+    mapEl.className = 'live-map-element';
+    mapEl.id = mapId;
+
+    card.append(toolbar, mapEl);
+
+    // Initialize Leaflet after DOM attachment
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        initLeafletInstance(mapId, items, userLat, userLon, medicineQuery, toolbar);
+      }, 50);
+    });
+
+    return card;
+  }
+
+  function initLeafletInstance(mapId, items, userLat, userLon, medicineQuery, toolbar) {
+    if (typeof window.L === 'undefined') {
+      setTimeout(() => initLeafletInstance(mapId, items, userLat, userLon, medicineQuery, toolbar), 200);
+      return;
+    }
+
+    const container = document.getElementById(mapId);
+    if (!container) return;
+
+    if (_activeLeafletMaps[mapId]) {
+      try { _activeLeafletMaps[mapId].remove(); } catch (_) {}
+      delete _activeLeafletMaps[mapId];
+    }
+    if (container._leaflet_id) {
+      delete container._leaflet_id;
+    }
+
+    const map = L.map(mapId, {
+      zoomControl: false,
+      scrollWheelZoom: true
+    }).setView([userLat, userLon], 13);
+
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const tileUrl = isDark
+      ? 'https://{s}.basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}{r}.png'
+      : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+
+    L.tileLayer(tileUrl, {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    }).addTo(map);
+
+    // User location marker
+    const userMarker = L.marker([userLat, userLon], {
+      icon: L.divIcon({
+        className: 'user-pin-wrapper',
+        html: '<div class="user-location-pin"><div class="user-location-beacon"></div></div>',
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      }),
+      zIndexOffset: 1000
+    }).addTo(map);
+
+    userMarker.bindPopup('<div style="padding:6px 8px;font-family:var(--font-body);"><strong>📍 Your Current Location</strong><div style="font-size:12px;color:var(--clr-text-500);margin-top:2px;">Bhubaneswar GPS center</div></div>');
+
+    const markersLayer = L.layerGroup().addTo(map);
+
+    function renderMarkers(filter = 'all') {
+      markersLayer.clearLayers();
+      const boundsList = [[userLat, userLon]];
+
+      let filtered = items;
+      if (filter === 'open') {
+        filtered = items.filter(it => it.is_open);
+      } else if (filter === 'instock') {
+        filtered = items.filter(it => it.availability !== 'out_of_stock' && it.is_open);
+      }
+
+      filtered.forEach(item => {
+        const lat = item.latitude || item.lat;
+        const lon = item.longitude || item.lon;
+        if (!lat || !lon) return;
+
+        boundsList.push([lat, lon]);
+
+        const isOpen = item.is_open !== false && item.is_open !== 0;
+        let pinClass = 'pin--green';
+        let pinBadge = '✓';
+
+        if (!isOpen) {
+          pinClass = 'pin--gray';
+          pinBadge = '✕';
+        } else if (item.availability === 'out_of_stock') {
+          pinClass = 'pin--red';
+          pinBadge = '0';
+        } else if (item.availability === 'low_stock') {
+          pinClass = 'pin--amber';
+          pinBadge = item.quantity != null ? String(item.quantity) : '!';
+        } else if (item.quantity != null) {
+          pinBadge = item.quantity > 99 ? '99+' : String(item.quantity);
+        }
+
+        const pinIcon = L.divIcon({
+          className: 'medfind-pin-wrapper',
+          html: `<div class="medfind-map-pin ${pinClass}"><div class="medfind-map-pin-inner">${pinBadge}</div></div>`,
+          iconSize: [38, 38],
+          iconAnchor: [19, 38],
+          popupAnchor: [0, -36]
+        });
+
+        const medName = item.medicine || item.medicine_name;
+        const popupContent = `
+          <div class="map-popup-card">
+            <div class="map-popup-header">
+              <div class="map-popup-title">${utils.escape(item.pharmacy || item.name)}</div>
+              <span class="badge ${isOpen ? 'badge--green' : 'badge--muted'}">${isOpen ? '● Open' : '● Closed'}</span>
+            </div>
+            <div class="map-popup-address">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              ${utils.escape(item.address)} • <strong>${item.distance_km || 0} km</strong>
+            </div>
+            ${medName ? `
+              <div class="map-popup-med-box">
+                <div class="map-popup-med-row">
+                  <span class="map-popup-med-name">${utils.escape(medName)} ${utils.escape(item.strength || '')}</span>
+                  <span class="map-popup-med-price">₹${item.price || 35}</span>
+                </div>
+                <div class="map-popup-meta">
+                  <span>${item.quantity != null ? `${item.quantity} units in stock` : 'Reported available'}</span>
+                  <span>${item.last_updated_minutes_ago != null ? utils.formatAgo(item.last_updated_minutes_ago) : 'Recent'}</span>
+                </div>
+              </div>
+              <div class="map-popup-actions">
+                <button class="btn btn--primary btn--sm btn-map-order" ${item.availability === 'out_of_stock' || !isOpen ? 'disabled' : ''}>
+                  ⚡ Order
+                </button>
+                <button class="btn btn--secondary btn--sm btn-map-cart" ${item.availability === 'out_of_stock' || !isOpen ? 'disabled' : ''}>
+                  + Cart
+                </button>
+              </div>
+            ` : `
+              <div style="font-size:12px;color:var(--clr-text-500);margin:8px 0 10px;">
+                Verified MedFind Partner Pharmacy. Search any medicine to check live inventory.
+              </div>
+            `}
+            <a href="https://www.google.com/maps/dir/?api=1&destination=${lat},${lon}" target="_blank" rel="noopener noreferrer" class="map-popup-dir-link">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+              Navigate in Google Maps
+            </a>
+          </div>
+        `;
+
+        const marker = L.marker([lat, lon], { icon: pinIcon }).addTo(markersLayer);
+        marker.bindPopup(popupContent, { maxWidth: 320 });
+
+        marker.on('popupopen', (e) => {
+          const px = e.popup.getElement();
+          if (!px) return;
+          const orderBtn = px.querySelector('.btn-map-order');
+          const cartBtn = px.querySelector('.btn-map-cart');
+          if (orderBtn) {
+            orderBtn.addEventListener('click', () => {
+              cart.addItem(item, 1);
+              router.navigate('#/checkout');
+            });
+          }
+          if (cartBtn) {
+            cartBtn.addEventListener('click', () => {
+              cart.addItem(item, 1);
+            });
+          }
+        });
+      });
+
+      if (boundsList.length > 1) {
+        map.fitBounds(boundsList, { padding: [40, 40], maxZoom: 15 });
+      }
+    }
+
+    renderMarkers('all');
+
+    // Recenter listener
+    const recenterBtn = document.getElementById(`${mapId}-recenter`);
+    if (recenterBtn) {
+      recenterBtn.addEventListener('click', () => {
+        map.flyTo([userLat, userLon], 14, { duration: 1.2 });
+      });
+    }
+
+    // Filter chips listener
+    if (toolbar) {
+      toolbar.querySelectorAll('[data-map-filter]').forEach(chip => {
+        chip.addEventListener('click', () => {
+          toolbar.querySelectorAll('[data-map-filter]').forEach(c => c.classList.remove('active'));
+          chip.classList.add('active');
+          renderMarkers(chip.dataset.mapFilter);
+        });
+      });
+    }
+
+    _activeLeafletMaps[mapId] = map;
+    setTimeout(() => { map.invalidateSize(); }, 200);
+  }
+
+  return { availBadge, openBadge, freshnessItem, scoreRing, skeletonCard, resultCard, liveMap };
 })();
 
 
@@ -1196,13 +1455,44 @@ const views = (() => {
     countEl.className = 'results-count';
     countEl.innerHTML = `<strong>${results.length}</strong> ${results.length === 1 ? 'pharmacy' : 'pharmacies'} found for <strong>'${utils.escape(search.query)}'</strong>`;
     hdr.append(countEl);
+
+    // Segmented View Toggle (List vs Live Map)
+    const toggleWrap = document.createElement('div');
+    toggleWrap.className = 'view-mode-toggle';
+    const isMapView = state.get().viewMode === 'map';
+    toggleWrap.innerHTML = `
+      <button class="view-mode-btn ${!isMapView ? 'active' : ''}" id="toggle-view-list" type="button" aria-label="List View">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        List View
+      </button>
+      <button class="view-mode-btn ${isMapView ? 'active' : ''}" id="toggle-view-map" type="button" aria-label="Live Map View">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+        Live Map
+      </button>
+    `;
+
+    toggleWrap.querySelector('#toggle-view-list')?.addEventListener('click', () => {
+      state.set({ viewMode: 'list' });
+      renderResults();
+    });
+
+    toggleWrap.querySelector('#toggle-view-map')?.addEventListener('click', () => {
+      state.set({ viewMode: 'map' });
+      renderResults();
+    });
+
+    hdr.append(toggleWrap);
     main.append(hdr);
 
-    const grid = document.createElement('div');
-    grid.className = 'results-grid';
-    grid.setAttribute('role', 'list');
-    results.forEach((item, i) => grid.append(components.resultCard(item, i)));
-    main.append(grid);
+    if (isMapView) {
+      main.append(components.liveMap(results, { id: 'search-results-map', medicine: search.query }));
+    } else {
+      const grid = document.createElement('div');
+      grid.className = 'results-grid';
+      grid.setAttribute('role', 'list');
+      results.forEach((item, i) => grid.append(components.resultCard(item, i)));
+      main.append(grid);
+    }
   }
 
   function buildInitialState() {
@@ -1215,7 +1505,13 @@ const views = (() => {
         </svg>
       </div>
       <h2 class="initial-state__title">Search for any medicine</h2>
-      <p class="initial-state__desc">Type a medicine name above or pick a quick suggestion to see nearby pharmacy availability, stock levels, and data freshness.</p>`;
+      <p class="initial-state__desc">Type a medicine name above or pick a quick suggestion to see nearby pharmacy availability, stock levels, and data freshness.</p>
+      <div style="margin-top:20px;">
+        <a href="#/map" class="btn btn--secondary" style="display:inline-flex;align-items:center;gap:8px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          Explore All Pharmacies on Live Map
+        </a>
+      </div>`;
     return div;
   }
 
@@ -3170,6 +3466,87 @@ const views = (() => {
   }
 
   /* ----------------------------------------------------------
+     LIVE MAP VIEW (#/map)
+     ---------------------------------------------------------- */
+  async function map() {
+    root.innerHTML = '';
+
+    const container = document.createElement('div');
+    container.className = 'map-page';
+
+    const hero = document.createElement('div');
+    hero.className = 'map-page__hero';
+    hero.innerHTML = `
+      <div>
+        <div class="hero__eyebrow" style="margin-bottom:8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/><line x1="8" y1="2" x2="8" y2="18"/><line x1="16" y1="6" x2="16" y2="22"/></svg>
+          Real-time GPS Proximity
+        </div>
+        <h1 class="map-page__title">Live Pharmacy Map</h1>
+        <p class="map-page__subtitle">Explore real-time medicine availability, store hours, and direct routes across Bhubaneswar.</p>
+      </div>
+      <div class="map-page__search-wrap">
+        <form id="map-search-form" class="search-bar" role="search" aria-label="Search medicine on map">
+          <div class="search-bar__icon" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          </div>
+          <input type="search" id="map-search-input" class="search-bar__input" placeholder="Search medicine on map (e.g. Dolo 650)…" value="${utils.escape(state.get().search.query)}" autocomplete="off" />
+          <button type="submit" class="search-bar__btn" aria-label="Search">
+            <span class="btn-label">Search</span>
+          </button>
+        </form>
+      </div>
+    `;
+
+    const mapHost = document.createElement('div');
+    mapHost.id = 'map-view-host';
+    mapHost.innerHTML = `<div style="padding:60px 20px;text-align:center;"><p style="color:var(--clr-text-500);margin-top:12px;">Loading live pharmacy coordinates…</p></div>`;
+
+    container.append(hero, mapHost);
+    root.append(container);
+
+    const { lat, lon } = state.get().location;
+    const currentQ = state.get().search.query;
+
+    const loadData = async (query = '') => {
+      try {
+        let items = [];
+        if (query.trim().length >= 2) {
+          items = await api.search(query.trim(), lat, lon);
+        } else {
+          items = await api.pharmacies(lat, lon);
+        }
+        mapHost.innerHTML = '';
+        const mapCard = components.liveMap(items, {
+          id: 'fullscreen-live-map',
+          medicine: query.trim()
+        });
+        mapHost.append(mapCard);
+      } catch (err) {
+        mapHost.innerHTML = `
+          <div class="empty-state" style="padding:40px 20px;">
+            <p class="form-error">Could not load map data: ${utils.escape(err.message)}</p>
+            <button class="btn btn--secondary" id="retry-map-btn">Retry</button>
+          </div>
+        `;
+        document.getElementById('retry-map-btn')?.addEventListener('click', () => loadData(query));
+      }
+    };
+
+    // Bind map search form
+    const form = document.getElementById('map-search-form');
+    const input = document.getElementById('map-search-input');
+    form?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const q = input?.value.trim() || '';
+      state.set({ search: { query: q } });
+      loadData(q);
+    });
+
+    loadData(currentQ);
+  }
+
+  /* ----------------------------------------------------------
      404 VIEW
      ---------------------------------------------------------- */
   function notFound() {
@@ -3184,7 +3561,7 @@ const views = (() => {
       </div>`;
   }
 
-  return { home, login, dashboard, checkout, orderTracking, orders, notFound, applyFilters };
+  return { home, login, dashboard, checkout, orderTracking, orders, map, notFound, applyFilters };
 })();
 
 
@@ -3237,6 +3614,7 @@ const nav = (() => {
 const router = (() => {
   const routes = {
     '#/'          : 'home',
+    '#/map'       : 'map',
     '#/login'     : 'login',
     '#/dashboard' : 'dashboard',
   };
@@ -3255,6 +3633,9 @@ const router = (() => {
     if (hash === '#/' || hash === '') {
       nav.setActiveLink('home');
       views.home();
+    } else if (hash === '#/map') {
+      nav.setActiveLink('map');
+      views.map();
     } else if (hash === '#/checkout') {
       nav.setActiveLink('orders');
       views.checkout();
