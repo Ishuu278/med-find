@@ -74,6 +74,21 @@ const utils = (() => {
 
 
 /* ============================================================
+   GLOBAL CONSTANTS & LEAFLET MAP REGISTRY
+   ============================================================ */
+const _activeLeafletMaps = {};
+
+const BBSR_NEIGHBORHOODS = [
+  { name: "All BBSR",           label: "📍 All Bhubaneswar",        lat: 20.2961, lon: 85.8245, zoom: 12 },
+  { name: "Patia / KIIT",       label: "🎓 Patia & KIIT",            lat: 20.3540, lon: 85.8175, zoom: 14 },
+  { name: "Saheed Nagar",       label: "🛍️ Saheed Nagar / Rasulgarh", lat: 20.2895, lon: 85.8450, zoom: 14 },
+  { name: "AIIMS / SUM",        label: "🏥 AIIMS & SUM Hospital",    lat: 20.2550, lon: 85.7680, zoom: 14 },
+  { name: "Jayadev Vihar",      label: "🏛️ Jayadev Vihar / Nayapalli", lat: 20.2980, lon: 85.8100, zoom: 14 },
+  { name: "Janpath",            label: "🚂 Janpath / Master Canteen", lat: 20.2680, lon: 85.8400, zoom: 14 },
+];
+
+
+/* ============================================================
    API  — centralised fetch with timeout, credentials, errors
    ============================================================ */
 const api = (() => {
@@ -122,15 +137,6 @@ const api = (() => {
     { id: 10, name: "SUM Hospital Medical Store",           address: "Kalinga Nagar, Near SUM Hospital, Ghatikia, Bhubaneswar, Odisha", lat: 20.2785, lon: 85.7620, is_open: 1, phone: "+91 98765 43219" },
     { id: 11, name: "Khandagiri Express Pharmacy",          address: "Near Khandagiri Caves, Baramunda, Bhubaneswar, Odisha",          lat: 20.2580, lon: 85.7860, is_open: 1, phone: "+91 98765 43220" },
     { id: 12, name: "Esplanade Care Pharmacy",              address: "Cuttack Road, Near Esplanade One Mall, Rasulgarh, Bhubaneswar",  lat: 20.2910, lon: 85.8640, is_open: 1, phone: "+91 98765 43221" },
-  ];
-
-  const BBSR_NEIGHBORHOODS = [
-    { name: "All BBSR",           label: "📍 All Bhubaneswar",        lat: 20.2961, lon: 85.8245, zoom: 12 },
-    { name: "Patia / KIIT",       label: "🎓 Patia & KIIT",            lat: 20.3540, lon: 85.8175, zoom: 14 },
-    { name: "Saheed Nagar",       label: "🛍️ Saheed Nagar / Rasulgarh", lat: 20.2895, lon: 85.8450, zoom: 14 },
-    { name: "AIIMS / SUM",        label: "🏥 AIIMS & SUM Hospital",    lat: 20.2550, lon: 85.7680, zoom: 14 },
-    { name: "Jayadev Vihar",      label: "🏛️ Jayadev Vihar / Nayapalli", lat: 20.2980, lon: 85.8100, zoom: 14 },
-    { name: "Janpath",            label: "🚂 Janpath / Master Canteen", lat: 20.2680, lon: 85.8400, zoom: 14 },
   ];
 
   const MOCK_MEDICINES = [
@@ -747,8 +753,6 @@ const components = (() => {
     card.append(header, medRow, meta, footer);
     return card;
   }
-
-  const _activeLeafletMaps = {};
 
   /* ---- Interactive Live Map Component ---- */
   function liveMap(items, options = {}) {
@@ -3547,7 +3551,7 @@ const views = (() => {
         const hLat = parseFloat(btn.dataset.lat);
         const hLon = parseFloat(btn.dataset.lon);
         const hZoom = parseInt(btn.dataset.zoom, 10) || 14;
-        const activeMap = components._activeLeafletMaps['fullscreen-live-map'];
+        const activeMap = _activeLeafletMaps['fullscreen-live-map'];
         if (activeMap) {
           activeMap.flyTo([hLat, hLon], hZoom, { duration: 1.2 });
         }
@@ -3598,7 +3602,7 @@ const views = (() => {
         nh.name.toLowerCase().includes(q.toLowerCase()) || q.toLowerCase().includes(nh.name.toLowerCase())
       );
       if (matchedArea) {
-        const activeMap = components._activeLeafletMaps['fullscreen-live-map'];
+        const activeMap = _activeLeafletMaps['fullscreen-live-map'];
         if (activeMap) {
           activeMap.flyTo([matchedArea.lat, matchedArea.lon], matchedArea.zoom, { duration: 1.2 });
           toast.info('Bhubaneswar Hub', `Centered map on ${matchedArea.label}`);
